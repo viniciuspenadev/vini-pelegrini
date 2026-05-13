@@ -86,7 +86,8 @@ export async function GET(
 
   const orderNum = String(pdfData.orderNumber).padStart(4, "0")
 
-  const blob   = await pdf(createElement(OrderPDFDocument, { data: pdfData })).toBlob()
+  const element = createElement(OrderPDFDocument, { data: pdfData }) as any
+  const blob   = await pdf(element).toBlob()
   const buffer = await blob.arrayBuffer()
 
   return new Response(buffer, {
