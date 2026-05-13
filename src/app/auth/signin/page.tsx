@@ -3,7 +3,7 @@
 import { signIn } from "next-auth/react"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, AlertCircle } from "lucide-react"
+import { Loader2, AlertCircle, Mail, Lock, ArrowRight, LayoutDashboard } from "lucide-react"
 
 export default function SignInPage() {
   const router  = useRouter()
@@ -32,74 +32,46 @@ export default function SignInPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-
-      {/* ── Painel esquerdo — branding (desktop) ── */}
-      <div className="hidden lg:flex lg:w-1/2 bg-blue-600 flex-col items-center justify-center p-12 relative overflow-hidden">
-        {/* Círculos decorativos */}
-        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-blue-500/40" />
-        <div className="absolute -bottom-32 -right-16 w-[28rem] h-[28rem] rounded-full bg-blue-700/50" />
-
-        <div className="relative z-10 text-center">
-          {/* Logo */}
-          <div className="size-16 rounded-2xl bg-white/20 flex items-center justify-center mx-auto mb-6 ring-1 ring-white/30">
-            <svg className="size-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
-            </svg>
-          </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight mb-3">PedidosPro</h1>
-          <p className="text-blue-100 text-base leading-relaxed max-w-sm mx-auto">
-            Gestão de pedidos inteligente para distribuidoras que querem crescer com controle.
-          </p>
-
-          {/* Features */}
-          <div className="mt-10 space-y-3 text-left">
-            {[
-              "Pipeline completo de pedidos",
-              "Gestão de clientes e crédito",
-              "Controle de rotas e entregas",
-              "Relatórios e dashboard em tempo real",
-            ].map((f) => (
-              <div key={f} className="flex items-center gap-3">
-                <div className="size-5 rounded-full bg-white/20 flex items-center justify-center shrink-0">
-                  <svg className="size-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-                <span className="text-sm text-blue-50">{f}</span>
-              </div>
-            ))}
-          </div>
-        </div>
+    <div className="min-h-screen relative flex items-center justify-center overflow-hidden bg-slate-50 font-sans selection:bg-indigo-500/20">
+      
+      {/* Background Effects (Soft Glowing Orbs) */}
+      <div className="absolute inset-0 z-0">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-indigo-300/40 blur-[100px] animate-pulse duration-[10000ms]" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-violet-300/40 blur-[100px] animate-pulse duration-[7000ms]" />
+        <div className="absolute top-[20%] right-[10%] w-[30%] h-[30%] rounded-full bg-blue-300/30 blur-[100px]" />
+        {/* Subtle grid pattern / noise overlay */}
+        <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-[0.03] mix-blend-multiply" />
       </div>
 
-      {/* ── Painel direito — formulário ── */}
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="w-full max-w-sm">
+      {/* Main Glassmorphic Card */}
+      <div className="relative z-10 w-full max-w-md px-6 py-12">
+        <div className="relative bg-white/60 backdrop-blur-2xl border border-white/80 shadow-[0_8px_32px_0_rgba(0,0,0,0.06)] rounded-3xl p-8 sm:p-10 overflow-hidden group">
+          
+          {/* Subtle inner top glow */}
+          <div className="absolute inset-0 bg-gradient-to-b from-white to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-700 pointer-events-none" />
 
-          {/* Logo mobile */}
-          <div className="flex flex-col items-center mb-8 lg:hidden">
-            <div className="size-12 rounded-xl bg-blue-600 flex items-center justify-center mb-3 shadow-lg shadow-blue-600/30">
-              <svg className="size-6 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.75}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10" />
-              </svg>
+          {/* Header */}
+          <div className="text-center mb-10 relative z-10">
+            <div className="inline-flex items-center justify-center size-14 rounded-2xl bg-indigo-50 border border-indigo-100 shadow-sm mb-6 relative">
+              <div className="absolute inset-0 rounded-2xl bg-indigo-400/20 blur-md" />
+              <LayoutDashboard className="size-7 text-indigo-600 relative z-10" />
             </div>
-            <h1 className="text-xl font-bold text-slate-900">PedidosPro</h1>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight mb-2">PedidosPro</h1>
+            <p className="text-slate-500 text-sm">
+              Gestão de alto nível. Entre para continuar.
+            </p>
           </div>
 
-          {/* Card */}
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-lg p-8">
-            <div className="mb-6">
-              <h2 className="text-xl font-bold text-slate-900 tracking-tight">Bem-vindo de volta</h2>
-              <p className="text-sm text-slate-400 mt-1">Entre com suas credenciais para continuar.</p>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-
-              <div className="space-y-1.5">
-                <label htmlFor="email" className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                  E-mail
-                </label>
+          <form onSubmit={handleSubmit} className="space-y-6 relative z-10">
+            {/* Email Field */}
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-xs font-medium text-slate-600 ml-1">
+                E-mail
+              </label>
+              <div className="relative group/input">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Mail className="size-4 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
+                </div>
                 <input
                   id="email"
                   name="email"
@@ -108,22 +80,28 @@ export default function SignInPage() {
                   required
                   autoFocus
                   disabled={loading}
-                  placeholder="voce@empresa.com"
-                  className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:opacity-50 disabled:bg-slate-50"
+                  placeholder="exemplo@empresa.com"
+                  className="w-full h-12 rounded-xl border border-slate-200/60 bg-white/50 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 focus:bg-white transition-all disabled:opacity-50 shadow-sm"
                 />
               </div>
+            </div>
 
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label htmlFor="password" className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
-                    Senha
-                  </label>
-                  <button
-                    type="button"
-                    className="text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
-                  >
-                    Esqueci a senha
-                  </button>
+            {/* Password Field */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between ml-1">
+                <label htmlFor="password" className="text-xs font-medium text-slate-600">
+                  Senha
+                </label>
+                <button
+                  type="button"
+                  className="text-xs text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  Esqueci a senha
+                </button>
+              </div>
+              <div className="relative group/input">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Lock className="size-4 text-slate-400 group-focus-within/input:text-indigo-600 transition-colors" />
                 </div>
                 <input
                   id="password"
@@ -133,41 +111,50 @@ export default function SignInPage() {
                   required
                   disabled={loading}
                   placeholder="••••••••"
-                  className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:opacity-50 disabled:bg-slate-50"
+                  className="w-full h-12 rounded-xl border border-slate-200/60 bg-white/50 pl-10 pr-4 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500/50 focus:bg-white transition-all disabled:opacity-50 shadow-sm"
                 />
               </div>
+            </div>
 
-              {error && (
-                <div className="flex items-center gap-2.5 rounded-lg bg-red-50 border border-red-200 px-3.5 py-3">
-                  <AlertCircle className="size-4 text-red-500 shrink-0" />
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
-              )}
+            {error && (
+              <div className="flex items-center gap-3 rounded-xl bg-red-50 border border-red-100 px-4 py-3 animate-in fade-in slide-in-from-top-2">
+                <AlertCircle className="size-4 text-red-500 shrink-0" />
+                <p className="text-sm text-red-800">{error}</p>
+              </div>
+            )}
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full h-10 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
-              >
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full h-12 relative group/btn overflow-hidden rounded-xl disabled:opacity-70 disabled:cursor-not-allowed mt-2 shadow-md shadow-indigo-500/20"
+            >
+              <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-violet-600 to-indigo-600 transition-transform duration-500 bg-[length:200%_auto] group-hover/btn:bg-[center_right_1rem]" />
+              <div className="relative h-full flex items-center justify-center gap-2 text-white font-medium text-sm">
                 {loading ? (
                   <>
                     <Loader2 className="size-4 animate-spin" />
-                    Entrando...
+                    Autenticando...
                   </>
                 ) : (
-                  "Entrar"
+                  <>
+                    Acessar Plataforma
+                    <ArrowRight className="size-4 group-hover/btn:translate-x-1 transition-transform" />
+                  </>
                 )}
-              </button>
-            </form>
-          </div>
+              </div>
+            </button>
+          </form>
 
-          <p className="text-center text-xs text-slate-400 mt-5">
-            Não tem acesso?{" "}
-            <a href="#" className="font-semibold text-blue-600 hover:text-blue-700 transition-colors">
-              Solicite ao administrador
-            </a>
-          </p>
         </div>
+
+        {/* Footer info */}
+        <p className="text-center text-xs text-slate-500 mt-8 relative z-10">
+          Não possui uma conta?{" "}
+          <a href="#" className="font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
+            Solicitar acesso
+          </a>
+        </p>
       </div>
 
     </div>
