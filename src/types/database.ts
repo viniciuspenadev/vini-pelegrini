@@ -35,6 +35,11 @@ export interface Customer {
   telefone:           string | null
   janela_entrega:     string | null
   instrucoes_entrega: string | null
+  // Fiscal
+  codigo_ibge:        string | null
+  pais_codigo:        string | null
+  pais_nome:          string | null
+  suframa:            string | null
   status:             CustomerStatus
   observacoes:        string | null
   created_at:         string
@@ -59,6 +64,51 @@ export interface Product {
   preco_base:     number
   status:         ProductStatus
   metadata:       ProductMetadata
+  // Fiscal
+  ncm:             string | null
+  cest:            string | null
+  origem:          number | null
+  cfop_padrao:     string | null
+  cst_icms:        string | null
+  csosn_icms:      string | null
+  cst_pis:         string | null
+  cst_cofins:      string | null
+  aliquota_icms:   number | null
+  aliquota_pis:    number | null
+  aliquota_cofins: number | null
+  ean:             string | null
   created_at:     string
   updated_at:     string
+}
+
+export interface TenantFiscalConfig {
+  tenant_id:           string
+  razao_social:        string | null
+  nome_fantasia:       string | null
+  cnpj:                string | null
+  inscricao_estadual:  string | null
+  inscricao_municipal: string | null
+  regime_tributario:   number | null
+  cnae:                string | null
+  cep:                 string | null
+  logradouro:          string | null
+  numero:              string | null
+  complemento:         string | null
+  bairro:              string | null
+  cidade:              string | null
+  estado:              string | null
+  codigo_ibge:         string | null
+  telefone:            string | null
+  email:               string | null
+  certificado_a1:      string | null
+  certificado_senha:   string | null
+  certificado_validade: string | null
+  ambiente:            number
+  serie_nfe:           number
+  proximo_numero_nfe:  number
+  natureza_operacao:   string
+  provider:            string
+  provider_token:      string | null
+  created_at:          string
+  updated_at:          string
 }

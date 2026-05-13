@@ -59,7 +59,7 @@ export default async function GodDashboardPage() {
   ]
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
 
       <div className="bg-white border-b border-slate-200 px-6 py-5">
         <h1 className="text-xl font-bold text-slate-900 tracking-tight">Visão Geral da Plataforma</h1>

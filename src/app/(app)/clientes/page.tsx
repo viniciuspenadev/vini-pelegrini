@@ -73,7 +73,7 @@ export default async function ClientesPage() {
   }))
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
 
       {/* Page header */}
       <div className="bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">

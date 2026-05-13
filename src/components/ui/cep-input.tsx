@@ -10,6 +10,7 @@ interface ViaCEPResponse {
   bairro:     string
   localidade: string
   uf:         string
+  ibge?:      string
   erro?:      boolean
 }
 
@@ -20,6 +21,7 @@ interface CepInputProps {
     bairro:     string
     cidade:     string
     estado:     string
+    ibge:       string
   }) => void
 }
 
@@ -47,6 +49,7 @@ export function CepInput({ defaultValue, onAddressFill }: CepInputProps) {
         bairro:     data.bairro,
         cidade:     data.localidade,
         estado:     data.uf,
+        ibge:       data.ibge ?? "",
       })
     } catch {
       setStatus("error")

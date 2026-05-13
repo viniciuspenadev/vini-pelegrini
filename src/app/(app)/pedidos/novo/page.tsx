@@ -34,7 +34,7 @@ export default async function NovoPedidoPage() {
   }))
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
       {/* Topbar */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-4 flex items-center gap-3">
         <LinkButton href="/pedidos" variant="ghost" size="icon" className="h-8 w-8 rounded-lg bg-slate-100 hover:bg-slate-200 shrink-0">

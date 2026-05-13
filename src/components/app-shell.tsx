@@ -13,7 +13,7 @@ interface Props {
 
 export function AppShell({ children, userName, userEmail, tenantName, userRole }: Props) {
   return (
-    <div className="flex h-screen overflow-hidden bg-slate-50">
+    <div className="flex h-screen overflow-hidden bg-blue-50">
       <Sidebar
         userName={userName}
         userEmail={userEmail}

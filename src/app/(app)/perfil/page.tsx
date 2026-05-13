@@ -37,7 +37,7 @@ export default async function PerfilPage() {
   const initial = (profile?.full_name ?? profile?.email ?? "U")[0].toUpperCase()
 
   return (
-    <div className="min-h-full bg-slate-50/50 dark:bg-background pb-20">
+    <div className="min-h-full bg-blue-50/50 dark:bg-background pb-20">
       <div className="border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4">
         <p className="text-sm font-semibold text-foreground">Meu Perfil</p>
       </div>

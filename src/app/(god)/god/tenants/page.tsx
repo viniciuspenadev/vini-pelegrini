@@ -25,7 +25,7 @@ export default async function GodTenantsPage() {
   const all = tenants ?? []
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
       <div className="bg-white border-b border-slate-200 px-6 py-5 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-900 tracking-tight">Tenants</h1>

@@ -39,12 +39,12 @@ const STATUS_OPTIONS = [
 const inputBase = "flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 py-1 text-sm text-slate-900 shadow-card transition-colors placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-50"
 
 function Section({
-  title, icon, children, hint,
+  title, icon, children, hint, className = "",
 }: {
-  title: string; icon: React.ReactNode; children: React.ReactNode; hint?: string
+  title: string; icon: React.ReactNode; children: React.ReactNode; hint?: string; className?: string
 }) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+    <div className={`bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden ${className}`}>
       <div className="flex items-center gap-3 px-5 py-4 border-b border-slate-100 bg-slate-50/60">
         <span className="size-7 rounded-lg bg-blue-50 flex items-center justify-center shrink-0 text-blue-600 [&_svg]:size-3.5">
           {icon}
@@ -92,12 +92,14 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
   const refBairro     = useRef<HTMLInputElement>(null)
   const refCidade     = useRef<HTMLInputElement>(null)
   const refEstado     = useRef<HTMLSelectElement>(null)
+  const refIbge       = useRef<HTMLInputElement>(null)
 
-  function handleAddressFill(addr: { logradouro: string; bairro: string; cidade: string; estado: string }) {
+  function handleAddressFill(addr: { logradouro: string; bairro: string; cidade: string; estado: string; ibge: string }) {
     if (refLogradouro.current) refLogradouro.current.value = addr.logradouro
     if (refBairro.current)     refBairro.current.value     = addr.bairro
     if (refCidade.current)     refCidade.current.value     = addr.cidade
     if (refEstado.current)     refEstado.current.value     = addr.estado
+    if (refIbge.current)       refIbge.current.value       = addr.ibge
   }
 
   function handleSubmit(e: React.SyntheticEvent<HTMLFormElement>) {
@@ -112,13 +114,16 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
 
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
       {/* ── 1. Identificação ── */}
       <Section
         title="Identificação"
         icon={<Building2 />}
         hint="Dados cadastrais e regime tributário"
+        className="lg:col-span-12"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <InputField
             label="Razão Social" name="razao_social" required
             defaultValue={customer?.razao_social}
@@ -156,7 +161,7 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         </div>
 
         {/* Regime tributário */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-2 border-t border-slate-100">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-2 border-t border-slate-100">
           <div className="space-y-1.5">
             <Label className="text-slate-700">Regime Tributário</Label>
             <select
@@ -185,6 +190,7 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         title="Endereço"
         icon={<MapPin />}
         hint="CEP preenche automaticamente logradouro, bairro, cidade e estado"
+        className="lg:col-span-12"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
           <div className="sm:col-span-2">
@@ -237,6 +243,29 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
               </select>
             </div>
           </div>
+
+          {/* Código IBGE (fiscal) */}
+          <div className="sm:col-span-6">
+            <div className="space-y-1.5">
+              <Label className="text-slate-700">
+                Código IBGE do Município <span className="text-red-500">*</span>
+              </Label>
+              <div className="relative">
+                <input
+                  type="text"
+                  name="codigo_ibge"
+                  defaultValue={customer?.codigo_ibge ?? ""}
+                  ref={refIbge}
+                  readOnly
+                  className={`${inputBase} bg-slate-50 font-mono text-slate-600 cursor-not-allowed max-w-[200px]`}
+                  placeholder="Preencha o CEP"
+                />
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Preenchido automaticamente pelo CEP — obrigatório para emissão de NF-e.
+              </p>
+            </div>
+          </div>
         </div>
       </Section>
 
@@ -245,6 +274,7 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         title="Entrega & Logística"
         icon={<Truck />}
         hint="Informações para o time de separação e motoristas"
+        className="lg:col-span-6"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <InputField
@@ -277,8 +307,9 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         title="Contatos"
         icon={<Phone />}
         hint="Telefones e e-mails da empresa e do responsável pela compra"
+        className="lg:col-span-6"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MaskedInput
             mask="phone"
             label="Telefone Principal" name="telefone"
@@ -326,6 +357,7 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         title="Dados Comerciais"
         icon={<DollarSign />}
         hint="Condições de venda, crédito e vendedor responsável"
+        className="lg:col-span-12"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div className="space-y-1.5">
@@ -388,6 +420,7 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
       <Section
         title="Situação & Observações"
         icon={<Settings2 />}
+        className="lg:col-span-12"
       >
         {canEditStatus && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -416,6 +449,8 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
           />
         </div>
       </Section>
+
+      </div>
 
       {/* ── Ações ── */}
       <div className="flex items-center justify-end gap-3 pt-2 pb-6">

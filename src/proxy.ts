@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 const PUBLIC_ROUTES = ["/auth/signin", "/auth/signup"]
 // Rotas sempre acessíveis, independente de autenticação
-const OPEN_ROUTES   = ["/setup"]
+const OPEN_ROUTES   = ["/setup", "/p/", "/api/pdf/"]
 
 export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl

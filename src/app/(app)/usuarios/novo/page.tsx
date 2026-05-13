@@ -24,7 +24,7 @@ export default async function NovoUsuarioPage() {
   const isOwner = session!.user.role === "owner"
 
   return (
-    <div className="min-h-full bg-slate-50/50 dark:bg-background pb-20">
+    <div className="min-h-full bg-blue-50/50 dark:bg-background pb-20">
       <div className="border-b border-border/50 bg-background/80 backdrop-blur-md sticky top-0 z-10 px-6 py-4 flex items-center gap-3">
         <LinkButton href="/usuarios" variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-muted/50 hover:bg-muted">
           <ChevronLeft className="size-4" />

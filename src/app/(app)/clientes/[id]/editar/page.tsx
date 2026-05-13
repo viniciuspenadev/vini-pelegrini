@@ -29,7 +29,7 @@ export default async function EditarClientePage({ params }: Props) {
   const nome = (customer as any).nome_fantasia || customer.razao_social
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
 
       {/* Topbar */}
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
@@ -48,7 +48,7 @@ export default async function EditarClientePage({ params }: Props) {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <div className="px-6 py-6">
         <CustomerForm
           customer={customer as Customer}
           vendedores={isAdminOrOwner ? vendedores : undefined}

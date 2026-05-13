@@ -12,7 +12,7 @@ export default async function NovoClientePage() {
     : []
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
 
       {/* Topbar */}
       <div className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-3 sticky top-0 z-10">
@@ -29,7 +29,7 @@ export default async function NovoClientePage() {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 py-6">
+      <div className="px-6 py-6">
         <CustomerForm
           vendedores={isAdminOrOwner ? vendedores : undefined}
           canEditStatus={false}

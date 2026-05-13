@@ -6,9 +6,10 @@ import { LinkButton } from "@/components/ui/link-button"
 import { OrderPipeline } from "@/components/order-pipeline"
 import { OrderWeightsForm } from "@/components/order-weights-form"
 import { OrderHistory } from "@/components/order-history"
-import { ChevronLeft, ChevronRight, User, MapPin, Phone, ClipboardCheck, Zap } from "lucide-react"
+import { ChevronLeft, ChevronRight, User, MapPin, Phone, ClipboardCheck, Zap, FileDown } from "lucide-react"
 import { OrderConditionsEditor } from "@/components/order-conditions-editor"
 import { OrderItemsEditor } from "@/components/order-items-editor"
+import { ShareOrderModal } from "@/components/orders/share-order-modal"
 
 const DATE_SHORT = (d: string) =>
   new Date(d + "T12:00:00").toLocaleDateString("pt-BR", {
@@ -29,7 +30,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
   const session        = await auth()
   const isAdminOrOwner = ["owner", "admin"].includes(session!.user.role)
 
-  const [{ data: order }, { data: items }, { data: history }] = await Promise.all([
+  const [{ data: order }, { data: items }, { data: history }, { data: existingLink }] = await Promise.all([
     supabaseAdmin
       .from("orders")
       .select(`
@@ -60,6 +61,15 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
       .select("id, from_status, to_status, notes, created_at, profiles ( full_name, email )")
       .eq("order_id", id)
       .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("order_links")
+      .select("id, token, expires_at, views, revoked, created_at")
+      .eq("order_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .eq("revoked", false)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ])
 
   if (!order) notFound()
@@ -92,7 +102,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
   const nomeExibicao = c?.nome_fantasia || c?.razao_social
 
   return (
-    <div className="min-h-full bg-slate-50">
+    <div className="min-h-full bg-blue-50">
 
       {/* Topbar */}
       <div className="bg-white border-b border-slate-200 sticky top-0 z-10 px-6 py-4 flex items-center gap-3">
@@ -119,6 +129,27 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
           <span className="text-xs text-slate-400 hidden sm:block">
             {DATE_SHORT(order.created_at.split("T")[0])}
           </span>
+
+          {/* Share + PDF actions */}
+          <div className="flex items-center gap-2 ml-2 pl-3 border-l border-slate-200">
+            <ShareOrderModal
+              orderId={id}
+              orderNum={orderNum}
+              existingLink={existingLink as any}
+            />
+            {existingLink && (
+              <a
+                href={`/api/pdf/${(existingLink as any).token}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 h-9 px-4 text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm"
+                title="Baixar PDF (requer link público ativo)"
+              >
+                <FileDown className="size-3.5" />
+                <span className="hidden sm:inline">PDF</span>
+              </a>
+            )}
+          </div>
         </div>
       </div>
 
