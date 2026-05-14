@@ -1,7 +1,77 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { jidToPhone } from "@/lib/evolution-api"
+import { jidToPhone, getMediaBase64 } from "@/lib/evolution-api"
 import type { EvolutionMessageData } from "@/types/chat"
+
+const CHAT_BUCKET = "chat-attachments"
+
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/jpeg":  "jpg",
+  "image/png":   "png",
+  "image/webp":  "webp",
+  "image/gif":   "gif",
+  "audio/ogg":   "ogg",
+  "audio/mpeg":  "mp3",
+  "audio/mp4":   "m4a",
+  "audio/webm":  "webm",
+  "video/mp4":   "mp4",
+  "video/webm":  "webm",
+  "application/pdf": "pdf",
+}
+
+/**
+ * Baixa mídia da Evolution (descriptografada do WhatsApp) e armazena no nosso bucket.
+ * Retorna o storage_path e signed URL recém-gerada.
+ */
+async function downloadAndStoreMedia(
+  instance: { id: string; tenant_id: string; evolution_url: string; evolution_key: string; instance_name: string },
+  conversationId: string,
+  msg: EvolutionMessageData,
+  contentType: "image" | "audio" | "video" | "document",
+  knownFileName: string | null,
+): Promise<{ storagePath: string; signedUrl: string; mimeType: string | null } | null> {
+  try {
+    const config = {
+      url:          instance.evolution_url,
+      apiKey:       instance.evolution_key,
+      instanceName: instance.instance_name,
+    }
+
+    const result = await getMediaBase64(config, msg)
+    if (!result?.base64) return null
+
+    const mimeType = result.mimetype ?? null
+    const ext      = (mimeType && MIME_EXTENSIONS[mimeType]) ?? "bin"
+    const baseName = knownFileName ?? result.fileName ?? `${contentType}_${Date.now()}.${ext}`
+    const safe     = baseName.replace(/[^a-zA-Z0-9.\-_]/g, "_")
+    const storagePath = `${instance.tenant_id}/${conversationId}/${Date.now()}_${safe}`
+
+    const buffer = Buffer.from(result.base64, "base64")
+
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from(CHAT_BUCKET)
+      .upload(storagePath, buffer, {
+        contentType: mimeType ?? "application/octet-stream",
+        upsert: false,
+      })
+
+    if (uploadErr) {
+      console.error("[webhook] storage upload error", uploadErr)
+      return null
+    }
+
+    const { data: signed } = await supabaseAdmin.storage
+      .from(CHAT_BUCKET)
+      .createSignedUrl(storagePath, 3600)
+
+    if (!signed?.signedUrl) return null
+
+    return { storagePath, signedUrl: signed.signedUrl, mimeType }
+  } catch (err) {
+    console.error("[webhook] downloadAndStoreMedia failed", err)
+    return null
+  }
+}
 
 /**
  * POST /api/webhooks/evolution
@@ -22,10 +92,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing event or instance" }, { status: 400 })
     }
 
-    // Busca a instância pelo nome para obter tenant_id
+    // Busca a instância pelo nome (com creds da Evolution pra baixar mídias)
     const { data: instance } = await supabaseAdmin
       .from("whatsapp_instances")
-      .select("id, tenant_id")
+      .select("id, tenant_id, evolution_url, evolution_key, instance_name")
       .eq("instance_name", instanceName)
       .single()
 
@@ -36,7 +106,7 @@ export async function POST(req: NextRequest) {
     switch (event) {
       case "messages.upsert":
       case "MESSAGES_UPSERT":
-        await handleMessageUpsert(instance.id, instance.tenant_id, body.data)
+        await handleMessageUpsert(instance, body.data)
         break
 
       case "messages.update":
@@ -65,10 +135,11 @@ export async function POST(req: NextRequest) {
 // ── Handlers ────────────────────────────────────────────────
 
 async function handleMessageUpsert(
-  instanceId: string,
-  tenantId:   string,
-  data:       EvolutionMessageData | EvolutionMessageData[],
+  instance: { id: string; tenant_id: string; evolution_url: string; evolution_key: string; instance_name: string },
+  data:     EvolutionMessageData | EvolutionMessageData[],
 ) {
+  const instanceId = instance.id
+  const tenantId   = instance.tenant_id
   const messages = Array.isArray(data) ? data : [data]
 
   for (const msg of messages) {
@@ -99,7 +170,7 @@ async function handleMessageUpsert(
     const pushName = msg.pushName ?? null
 
     // Extrai conteúdo da mensagem
-    const { contentType, content, mediaUrl, mediaMimeType, mediaFileName } = extractMessageContent(msg)
+    const { contentType, content, mediaMimeType, mediaFileName } = extractMessageContent(msg)
 
     // 1. Busca ou cria contato
     const contact = await findOrCreateContact(tenantId, jid, phone, pushName)
@@ -107,7 +178,22 @@ async function handleMessageUpsert(
     // 2. Busca ou cria conversa
     const conversation = await findOrCreateConversation(tenantId, contact.id, instanceId)
 
-    // 3. Insere mensagem
+    // 3. Se for mídia, baixa da Evolution e armazena no nosso bucket
+    let finalMediaUrl: string | null = null
+    let finalMimeType: string | null = mediaMimeType
+    const metadata: Record<string, unknown> = {}
+
+    const isMedia = contentType === "image" || contentType === "audio" || contentType === "video" || contentType === "document"
+    if (isMedia) {
+      const stored = await downloadAndStoreMedia(instance, conversation.id, msg, contentType, mediaFileName)
+      if (stored) {
+        finalMediaUrl  = stored.signedUrl
+        finalMimeType  = stored.mimeType ?? mediaMimeType
+        metadata.storage_path = stored.storagePath
+      }
+    }
+
+    // 4. Insere mensagem
     await supabaseAdmin.from("chat_messages").insert({
       conversation_id: conversation.id,
       tenant_id:       tenantId,
@@ -115,12 +201,13 @@ async function handleMessageUpsert(
       sender_id:       contact.id,
       content_type:    contentType,
       content,
-      media_url:       mediaUrl,
-      media_mime_type: mediaMimeType,
+      media_url:       finalMediaUrl,
+      media_mime_type: finalMimeType,
       media_file_name: mediaFileName,
       whatsapp_msg_id: msg.key.id ?? null,
       status:          "delivered",
       is_private_note: false,
+      metadata:        Object.keys(metadata).length > 0 ? metadata : {},
     })
 
     // 4. Atualiza conversa com preview e contadores

@@ -255,6 +255,124 @@ export async function sendMessage(
   return { id: msg.id }
 }
 
+// ── Envio de mídia ──────────────────────────────────────────
+
+const CHAT_BUCKET = "chat-attachments"
+
+function detectMediaType(mime: string): "image" | "audio" | "video" | "document" {
+  if (mime.startsWith("image/")) return "image"
+  if (mime.startsWith("audio/")) return "audio"
+  if (mime.startsWith("video/")) return "video"
+  return "document"
+}
+
+export async function sendChatMedia(conversationId: string, formData: FormData) {
+  const session = await auth()
+  if (!session?.user?.tenantId) throw new Error("Não autenticado")
+
+  const file    = formData.get("file") as File | null
+  const caption = (formData.get("caption") as string) || ""
+  if (!file || file.size === 0) throw new Error("Nenhum arquivo")
+
+  const tenantId  = session.user.tenantId
+  const mediaType = detectMediaType(file.type)
+
+  // Busca conversa + contato
+  const { data: conv } = await supabaseAdmin
+    .from("chat_conversations")
+    .select("id, contact_id, chat_contacts(phone_number)")
+    .eq("id", conversationId)
+    .eq("tenant_id", tenantId)
+    .single()
+
+  if (!conv) throw new Error("Conversa não encontrada")
+  const contact = conv.chat_contacts as unknown as { phone_number: string }
+
+  // Upload pra Storage privado
+  const safeName    = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_")
+  const storagePath = `${tenantId}/${conversationId}/${Date.now()}_${safeName}`
+  const arrayBuffer = await file.arrayBuffer()
+
+  const { error: uploadErr } = await supabaseAdmin.storage
+    .from(CHAT_BUCKET)
+    .upload(storagePath, arrayBuffer, { contentType: file.type, upsert: false })
+  if (uploadErr) throw new Error(`Storage: ${uploadErr.message}`)
+
+  // Gera URL assinada (60 minutos — suficiente para Evolution baixar)
+  const { data: signed, error: urlErr } = await supabaseAdmin.storage
+    .from(CHAT_BUCKET)
+    .createSignedUrl(storagePath, 3600)
+  if (urlErr || !signed) {
+    await supabaseAdmin.storage.from(CHAT_BUCKET).remove([storagePath])
+    throw new Error("Erro ao gerar URL")
+  }
+
+  // Insere a mensagem como "pending"
+  const { data: msg, error: dbErr } = await supabaseAdmin
+    .from("chat_messages")
+    .insert({
+      conversation_id: conversationId,
+      tenant_id:       tenantId,
+      sender_type:     "agent",
+      sender_id:       session.user.id,
+      content_type:    mediaType,
+      content:         caption || null,
+      media_url:       signed.signedUrl,
+      media_mime_type: file.type,
+      media_file_name: file.name,
+      status:          "pending",
+      is_private_note: false,
+      metadata:        { storage_path: storagePath },
+    })
+    .select("id")
+    .single()
+
+  if (dbErr || !msg) {
+    await supabaseAdmin.storage.from(CHAT_BUCKET).remove([storagePath])
+    throw new Error(dbErr?.message ?? "Erro ao salvar")
+  }
+
+  // Envia via Evolution
+  try {
+    const config = await getInstanceConfig(tenantId)
+    const result = await evo.sendMediaMessage(
+      config,
+      contact.phone_number,
+      signed.signedUrl,
+      mediaType,
+      caption || undefined,
+      file.name,
+    )
+
+    await supabaseAdmin
+      .from("chat_messages")
+      .update({ whatsapp_msg_id: result.key?.id ?? null, status: "sent" })
+      .eq("id", msg.id)
+  } catch (err) {
+    await supabaseAdmin
+      .from("chat_messages")
+      .update({ status: "failed" })
+      .eq("id", msg.id)
+    throw new Error(`Falha no envio: ${(err as Error).message}`)
+  }
+
+  // Preview
+  const previewLabels: Record<string, string> = {
+    image: "📷 Imagem", audio: "🎤 Áudio", video: "📹 Vídeo", document: "📎 Documento",
+  }
+  await supabaseAdmin
+    .from("chat_conversations")
+    .update({
+      last_message_at:      new Date().toISOString(),
+      last_message_preview: caption || previewLabels[mediaType] || "Mídia",
+      updated_at:           new Date().toISOString(),
+    })
+    .eq("id", conversationId)
+
+  revalidatePath("/marketing")
+  return { id: msg.id }
+}
+
 // ── Gerenciamento de conversas ──────────────────────────────
 
 export async function assignConversation(conversationId: string, agentId: string | null) {
@@ -336,6 +454,36 @@ export async function deleteQuickReply(id: string) {
 
 // ── Data Fetching (para polling do client) ──────────────────
 
+/**
+ * Renova signed URLs das mensagens com mídia armazenada no bucket próprio.
+ * Mensagens com mídia recebida pela Evolution mantêm a URL original.
+ */
+async function refreshMediaUrls(messages: any[]): Promise<any[]> {
+  const toSign = messages
+    .map((m) => m?.metadata?.storage_path as string | undefined)
+    .filter((p): p is string => !!p)
+
+  if (toSign.length === 0) return messages
+
+  // Em batch — uma URL por path (signed por 1h, suficiente p/ visualização)
+  const signedMap = new Map<string, string>()
+  await Promise.all(
+    toSign.map(async (path) => {
+      const { data } = await supabaseAdmin.storage
+        .from(CHAT_BUCKET)
+        .createSignedUrl(path, 3600)
+      if (data?.signedUrl) signedMap.set(path, data.signedUrl)
+    })
+  )
+
+  return messages.map((m) => {
+    const path = m?.metadata?.storage_path as string | undefined
+    if (!path) return m
+    const fresh = signedMap.get(path)
+    return fresh ? { ...m, media_url: fresh } : m
+  })
+}
+
 export async function getMessages(conversationId: string) {
   const session = await auth()
   if (!session) throw new Error("Não autenticado")
@@ -348,7 +496,7 @@ export async function getMessages(conversationId: string) {
     .order("created_at", { ascending: true })
     .limit(200)
 
-  return (data ?? []) as any[]
+  return await refreshMediaUrls((data ?? []) as any[])
 }
 
 export async function refreshInbox() {

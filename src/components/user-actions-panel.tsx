@@ -2,16 +2,17 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateUserRole, toggleUserActive, resetUserPassword } from "@/lib/actions/usuarios"
+import { updateUserRole, toggleUserActive, resetUserPassword, updateUserCommission } from "@/lib/actions/usuarios"
 import { Button } from "@/components/ui/button"
-import { ShieldCheck, Power, KeyRound } from "lucide-react"
+import { ShieldCheck, Power, KeyRound, Award } from "lucide-react"
 
 interface Props {
-  userId:        string
-  currentRole:   string
-  isActive:      boolean
-  isTargetOwner: boolean
-  sessionRole:   string
+  userId:         string
+  currentRole:    string
+  isActive:       boolean
+  isTargetOwner:  boolean
+  sessionRole:    string
+  commissionPct?: number
 }
 
 const selectClass = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -29,15 +30,17 @@ function Card({ icon, title, children }: { icon: React.ReactNode; title: string;
   )
 }
 
-export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner, sessionRole }: Props) {
+export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner, sessionRole, commissionPct = 0 }: Props) {
   const router          = useRouter()
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [newPwd, setNewPwd] = useState("")
   const [role, setRole] = useState(currentRole)
+  const [commission, setCommission] = useState(String(commissionPct))
 
   const isOwnerSession  = sessionRole === "owner"
   const canChangeRole   = !isTargetOwner || isOwnerSession
+  const isSalesRole     = ["vendedor", "owner", "admin"].includes(role)
 
   async function handleRoleChange() {
     setError(null)
@@ -54,6 +57,18 @@ export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner,
     start(async () => {
       try {
         await toggleUserActive(userId, !isActive)
+        router.refresh()
+      } catch (e: any) { setError(e.message) }
+    })
+  }
+
+  async function handleCommissionChange() {
+    const pct = parseFloat(commission.replace(",", "."))
+    if (isNaN(pct) || pct < 0 || pct > 100) { setError("Comissão deve ser entre 0 e 100"); return }
+    setError(null)
+    start(async () => {
+      try {
+        await updateUserCommission(userId, pct)
         router.refresh()
       } catch (e: any) { setError(e.message) }
     })
@@ -90,6 +105,37 @@ export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner,
               {isOwnerSession && <option value="owner">Proprietário</option>}
             </select>
             <Button onClick={handleRoleChange} disabled={pending || role === currentRole} size="sm" className="shrink-0">
+              Salvar
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {/* Comissão — apenas para roles que tocam vendas */}
+      {isSalesRole && (
+        <Card icon={<Award />} title="Comissão sobre faturamento">
+          <p className="text-sm text-muted-foreground mb-3">
+            Percentual aplicado sobre o total dos pedidos atribuídos a este usuário. Usado no painel de rentabilidade.
+          </p>
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                value={commission}
+                onChange={(e) => setCommission(e.target.value)}
+                className={`${inputClass} pr-8`}
+              />
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">%</span>
+            </div>
+            <Button
+              onClick={handleCommissionChange}
+              disabled={pending || commission === String(commissionPct)}
+              size="sm"
+              className="shrink-0"
+            >
               Salvar
             </Button>
           </div>

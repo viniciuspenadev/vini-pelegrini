@@ -66,7 +66,7 @@ const NAV: NavGroup[] = [
     icon:  <MessageCircle className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
     children: [
       { label: "Inbox",         href: "/marketing",              icon: <Inbox     className={subIcon} strokeWidth={1.75} /> },
-      { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} /> },
       { label: "Campanhas",     href: "/marketing/campanhas",    icon: <Megaphone className={subIcon} strokeWidth={1.75} />, soon: true },
       { label: "Configuração",  href: "/marketing/configuracao", icon: <Settings  className={subIcon} strokeWidth={1.75} /> },
     ],

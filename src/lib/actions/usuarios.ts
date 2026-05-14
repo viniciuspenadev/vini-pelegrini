@@ -107,6 +107,33 @@ export async function toggleUserActive(userId: string, active: boolean) {
   revalidatePath(`/usuarios/${userId}`)
 }
 
+export async function updateUserCommission(userId: string, commissionPct: number) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+  requireAdminOrOwner(session.user.role)
+
+  if (commissionPct < 0 || commissionPct > 100) {
+    throw new Error("Comissão deve estar entre 0 e 100%")
+  }
+
+  // Confirma que o user pertence ao tenant antes de mexer em profile global
+  const { data: membership } = await supabaseAdmin
+    .from("tenant_users")
+    .select("id")
+    .eq("tenant_id", session.user.tenantId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (!membership) throw new Error("Usuário não pertence a este tenant")
+
+  await supabaseAdmin
+    .from("profiles")
+    .update({ commission_pct: commissionPct })
+    .eq("id", userId)
+
+  revalidatePath(`/usuarios/${userId}`)
+}
+
 export async function resetUserPassword(userId: string, newPassword: string) {
   const session = await auth()
   if (!session) throw new Error("Não autenticado")

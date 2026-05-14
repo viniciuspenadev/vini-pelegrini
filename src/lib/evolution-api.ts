@@ -153,6 +153,27 @@ export async function sendMediaMessage(
   )
 }
 
+/**
+ * Baixa uma mídia (imagem/áudio/vídeo/doc) recebida via WhatsApp em base64.
+ * Necessário porque as URLs do WhatsApp são criptografadas (mmg.whatsapp.net).
+ */
+export async function getMediaBase64(
+  config: EvolutionConfig,
+  msgPayload: unknown,
+) {
+  return evoFetch<{ base64: string; mimetype?: string; fileName?: string }>(
+    config,
+    `/chat/getBase64FromMediaMessage/${config.instanceName}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        message: msgPayload,
+        convertToMp4: false,
+      }),
+    },
+  )
+}
+
 // ── Contacts ────────────────────────────────────────────────
 
 export async function fetchContacts(config: EvolutionConfig) {

@@ -18,7 +18,7 @@ export default async function UsuarioDetailPage({ params }: { params: Promise<{ 
   if (!["owner", "admin"].includes(session!.user.role)) redirect("/")
 
   const [{ data: profile }, { data: membership }] = await Promise.all([
-    supabaseAdmin.from("profiles").select("id, full_name, email").eq("id", id).single(),
+    supabaseAdmin.from("profiles").select("id, full_name, email, commission_pct").eq("id", id).single(),
     supabaseAdmin
       .from("tenant_users")
       .select("role, active")
@@ -73,6 +73,7 @@ export default async function UsuarioDetailPage({ params }: { params: Promise<{ 
             isActive={membership.active}
             isTargetOwner={isTargetOwner}
             sessionRole={session!.user.role}
+            commissionPct={Number((profile as any).commission_pct ?? 0)}
           />
         ) : (
           <p className="text-sm text-muted-foreground text-center py-4 italic">

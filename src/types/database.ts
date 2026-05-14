@@ -114,6 +114,32 @@ export interface OrderAttachment {
   uploaded_by:     string | null
 }
 
+// ═══════════════════════════════════════════════════════════════
+// Tags universais (polimórficas)
+// ═══════════════════════════════════════════════════════════════
+
+export type TaggableType = "contact" | "customer" | "order" | "conversation" | "lead"
+
+export interface Tag {
+  id:          string
+  tenant_id:   string
+  name:        string
+  color:       string  // hex
+  description: string | null
+  created_at:  string
+  updated_at:  string
+}
+
+export interface Tagging {
+  id:            string
+  tag_id:        string
+  tenant_id:     string
+  taggable_type: TaggableType
+  taggable_id:   string
+  tagged_at:     string
+  tagged_by:     string | null
+}
+
 export type OrderStatus =
   | "recebido"
   | "em_separacao"

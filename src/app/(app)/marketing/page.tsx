@@ -81,13 +81,33 @@ export default async function MarketingInboxPage() {
         .limit(500)
     : { data: [] }
 
-  // Group messages by conversation
+  // Renova signed URLs das mensagens que têm storage_path próprio
+  const rawMessages = (allMessages ?? []) as any[]
+  const pathsToSign = Array.from(new Set(
+    rawMessages.map((m) => m?.metadata?.storage_path).filter(Boolean) as string[]
+  ))
+  const signedMap = new Map<string, string>()
+  if (pathsToSign.length > 0) {
+    await Promise.all(
+      pathsToSign.map(async (path) => {
+        const { data } = await supabaseAdmin.storage
+          .from("chat-attachments")
+          .createSignedUrl(path, 3600)
+        if (data?.signedUrl) signedMap.set(path, data.signedUrl)
+      })
+    )
+  }
+
+  // Group messages by conversation (com URLs renovadas)
   const messagesByConv: Record<string, ChatMessage[]> = {}
-  for (const msg of (allMessages ?? []) as ChatMessage[]) {
+  for (const msg of rawMessages as ChatMessage[]) {
+    const path = (msg as any)?.metadata?.storage_path as string | undefined
+    const fresh = path ? signedMap.get(path) : undefined
+    const final = fresh ? { ...msg, media_url: fresh } : msg
     if (!messagesByConv[msg.conversation_id]) {
       messagesByConv[msg.conversation_id] = []
     }
-    messagesByConv[msg.conversation_id].push(msg)
+    messagesByConv[msg.conversation_id].push(final)
   }
 
   // 4. Build contacts map
