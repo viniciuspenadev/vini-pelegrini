@@ -29,7 +29,7 @@ async function downloadAndStoreMedia(
   msg: EvolutionMessageData,
   contentType: "image" | "audio" | "video" | "document",
   knownFileName: string | null,
-): Promise<{ storagePath: string; signedUrl: string; mimeType: string | null } | null> {
+): Promise<{ storagePath: string; signedUrl: string; mimeType: string | null } | { error: string }> {
   try {
     const config = {
       url:          instance.evolution_url,
@@ -37,8 +37,27 @@ async function downloadAndStoreMedia(
       instanceName: instance.instance_name,
     }
 
-    const result = await getMediaBase64(config, msg)
-    if (!result?.base64) return null
+    console.log("[webhook] downloadAndStoreMedia start", {
+      conversationId,
+      contentType,
+      msgKey: msg.key,
+      evolution: instance.evolution_url,
+    })
+
+    let result: { base64?: string; mimetype?: string; fileName?: string }
+    try {
+      result = await getMediaBase64(config, msg)
+    } catch (evoErr) {
+      const errMsg = `evolution_api_error: ${(evoErr as Error).message}`
+      console.error("[webhook]", errMsg)
+      return { error: errMsg }
+    }
+
+    if (!result?.base64) {
+      const errMsg = `no_base64_in_response: ${JSON.stringify(result).slice(0, 200)}`
+      console.error("[webhook]", errMsg)
+      return { error: errMsg }
+    }
 
     const mimeType = result.mimetype ?? null
     const ext      = (mimeType && MIME_EXTENSIONS[mimeType]) ?? "bin"
@@ -56,20 +75,24 @@ async function downloadAndStoreMedia(
       })
 
     if (uploadErr) {
-      console.error("[webhook] storage upload error", uploadErr)
-      return null
+      const errMsg = `storage_upload_error: ${uploadErr.message}`
+      console.error("[webhook]", errMsg)
+      return { error: errMsg }
     }
 
     const { data: signed } = await supabaseAdmin.storage
       .from(CHAT_BUCKET)
       .createSignedUrl(storagePath, 3600)
 
-    if (!signed?.signedUrl) return null
+    if (!signed?.signedUrl) {
+      return { error: "signed_url_failed" }
+    }
 
     return { storagePath, signedUrl: signed.signedUrl, mimeType }
   } catch (err) {
-    console.error("[webhook] downloadAndStoreMedia failed", err)
-    return null
+    const errMsg = `unexpected: ${(err as Error).message}`
+    console.error("[webhook]", errMsg, err)
+    return { error: errMsg }
   }
 }
 
@@ -186,7 +209,16 @@ async function handleMessageUpsert(
     const isMedia = contentType === "image" || contentType === "audio" || contentType === "video" || contentType === "document"
     if (isMedia) {
       const stored = await downloadAndStoreMedia(instance, conversation.id, msg, contentType, mediaFileName)
-      if (stored) {
+      if ("error" in stored) {
+        // Falhou — registra o erro no metadata pra debug + mantém URL original (criptografada)
+        metadata.media_error          = stored.error
+        metadata.media_error_at       = new Date().toISOString()
+        metadata.original_whatsapp_url = (msg.message as any)?.imageMessage?.url
+                                       ?? (msg.message as any)?.audioMessage?.url
+                                       ?? (msg.message as any)?.videoMessage?.url
+                                       ?? (msg.message as any)?.documentMessage?.url
+                                       ?? null
+      } else {
         finalMediaUrl  = stored.signedUrl
         finalMimeType  = stored.mimeType ?? mediaMimeType
         metadata.storage_path = stored.storagePath
