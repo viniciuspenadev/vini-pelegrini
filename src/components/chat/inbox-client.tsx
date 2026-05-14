@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useTransition, useCallback } from "react"
+import { useState, useEffect, useTransition, useCallback, useRef } from "react"
 import { ConversationList } from "@/components/chat/conversation-list"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { ContactSidebar } from "@/components/chat/contact-sidebar"
@@ -10,6 +10,8 @@ import {
   assignConversation,
   updateConversationStatus,
   markConversationRead,
+  getMessages,
+  refreshInbox,
 } from "@/lib/actions/chat"
 import type {
   ChatConversation,
@@ -51,8 +53,8 @@ interface Props {
 
 export function InboxClient({
   conversations: initialConversations,
-  messages,
-  contacts,
+  messages: initialMessages,
+  contacts: initialContacts,
   customers,
   recentOrders,
   quickReplies,
@@ -61,17 +63,44 @@ export function InboxClient({
 }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [activeId, setActiveId]           = useState<string | null>(null)
+  const [activeMessages, setActiveMessages] = useState<ChatMessage[]>([])
+  const [contacts, setContacts]           = useState(initialContacts)
   const [statusFilter, setStatusFilter]   = useState("open")
+  const [loadingMessages, setLoadingMsg]  = useState(false)
   const [, startTransition]               = useTransition()
+  const pollRef                           = useRef<NodeJS.Timeout | null>(null)
+  const activeIdRef                       = useRef<string | null>(null)
+
+  // Keep ref in sync
+  activeIdRef.current = activeId
 
   const activeConv     = activeId ? conversations.find((c) => c.id === activeId) : null
-  const activeMessages = activeId ? (messages[activeId] ?? []) : []
   const activeContact  = activeConv ? contacts[activeConv.contact_id] : null
   const activeCustomer = activeContact?.customer_id ? customers[activeContact.customer_id] : null
   const activeOrders   = activeContact?.customer_id ? (recentOrders[activeContact.customer_id] ?? []) : []
 
+  // ── Fetch messages for a conversation ──
+  const loadMessages = useCallback(async (convId: string) => {
+    try {
+      const msgs = await getMessages(convId)
+      // Only update if still viewing the same conversation
+      if (activeIdRef.current === convId) {
+        setActiveMessages(msgs)
+      }
+    } catch (err) {
+      console.error("Erro ao carregar mensagens:", err)
+    }
+  }, [])
+
+  // ── Select conversation ──
   const handleSelect = useCallback((id: string) => {
     setActiveId(id)
+    setActiveMessages([]) // Clear immediately
+    setLoadingMsg(true)
+
+    // Fetch messages
+    loadMessages(id).finally(() => setLoadingMsg(false))
+
     // Mark as read
     startTransition(async () => {
       await markConversationRead(id)
@@ -79,7 +108,34 @@ export function InboxClient({
         prev.map((c) => c.id === id ? { ...c, unread_count: 0 } : c)
       )
     })
-  }, [])
+  }, [loadMessages])
+
+  // ── Polling: refresh conversations + active messages every 5s ──
+  useEffect(() => {
+    const poll = async () => {
+      try {
+        const data = await refreshInbox()
+        if (data) {
+          setConversations(data.conversations)
+          if (data.contacts) {
+            setContacts((prev) => ({ ...prev, ...data.contacts }))
+          }
+        }
+
+        // Refresh active conversation messages
+        if (activeIdRef.current) {
+          await loadMessages(activeIdRef.current)
+        }
+      } catch {
+        // Silently handle polling errors
+      }
+    }
+
+    pollRef.current = setInterval(poll, 5000)
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current)
+    }
+  }, [loadMessages])
 
   const handleStatusChange = useCallback((status: string) => {
     if (!activeId) return

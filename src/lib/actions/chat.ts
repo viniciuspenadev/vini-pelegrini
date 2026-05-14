@@ -333,3 +333,54 @@ export async function deleteQuickReply(id: string) {
 
   revalidatePath("/marketing/configuracao")
 }
+
+// ── Data Fetching (para polling do client) ──────────────────
+
+export async function getMessages(conversationId: string) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+
+  const { data } = await supabaseAdmin
+    .from("chat_messages")
+    .select("*")
+    .eq("conversation_id", conversationId)
+    .eq("tenant_id", session.user.tenantId)
+    .order("created_at", { ascending: true })
+    .limit(200)
+
+  return (data ?? []) as any[]
+}
+
+export async function refreshInbox() {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+
+  const tenantId = session.user.tenantId
+
+  const { data: conversationsRaw } = await supabaseAdmin
+    .from("chat_conversations")
+    .select(`
+      *,
+      chat_contacts (
+        id, tenant_id, customer_id, whatsapp_id, phone_number, push_name,
+        profile_pic_url, is_blocked, tags, notes, created_at, updated_at,
+        customers ( razao_social, nome_fantasia )
+      ),
+      profiles ( full_name )
+    `)
+    .eq("tenant_id", tenantId)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(100)
+
+  const conversations = conversationsRaw ?? []
+
+  // Build contacts map
+  const contacts: Record<string, unknown> = {}
+  for (const conv of conversations as any[]) {
+    if (conv.chat_contacts) {
+      contacts[conv.contact_id] = conv.chat_contacts
+    }
+  }
+
+  return { conversations, contacts } as any
+}
