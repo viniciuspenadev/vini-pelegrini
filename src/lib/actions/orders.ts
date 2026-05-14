@@ -4,6 +4,10 @@ import { auth } from "@/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import {
+  generateReceivablesFromOrder,
+  cancelReceivablesFromOrder,
+} from "@/lib/financial/generate-receivables"
 
 export interface OrderItemInput {
   product_id:         string
@@ -92,18 +96,27 @@ export async function createOrder(data: {
 
   if (error || !order) throw new Error(error?.message ?? "Erro ao criar pedido")
 
+  // Captura snapshot do preço de custo dos produtos no momento do pedido
+  const productIds = data.items.map((i) => i.product_id)
+  const { data: productsCusto } = await supabaseAdmin
+    .from("products")
+    .select("id, preco_custo")
+    .in("id", productIds)
+  const custoMap = new Map((productsCusto ?? []).map((p) => [p.id, p.preco_custo]))
+
   const items = data.items.map((item) => {
     const gross          = item.requested_quantity * item.unit_price
     const discount_amount = item.discount_amount ?? (gross * (item.discount_pct ?? 0) / 100)
     return {
-      order_id:           order.id,
-      product_id:         item.product_id,
-      requested_quantity: item.requested_quantity,
-      unit_price:         item.unit_price,
-      discount_pct:       item.discount_pct   ?? 0,
-      discount_amount:    discount_amount,
-      item_notes:         item.item_notes     ?? null,
-      subtotal:           gross - discount_amount,
+      order_id:             order.id,
+      product_id:           item.product_id,
+      requested_quantity:   item.requested_quantity,
+      unit_price:           item.unit_price,
+      discount_pct:         item.discount_pct   ?? 0,
+      discount_amount:      discount_amount,
+      item_notes:           item.item_notes     ?? null,
+      subtotal:             gross - discount_amount,
+      preco_custo_snapshot: custoMap.get(item.product_id) ?? null,
     }
   })
 
@@ -184,6 +197,9 @@ export async function advanceOrderStatus(orderId: string, notes?: string) {
     notes:       notes || STATUS_NOTES[next] || null,
   })
 
+  // Hook financeiro: gera recebimentos se o novo status for o trigger configurado
+  await generateReceivablesFromOrder(orderId, next, session.user.id)
+
   revalidatePath(`/pedidos/${orderId}`)
   revalidatePath("/pedidos")
 }
@@ -218,6 +234,9 @@ export async function requestBilling(orderId: string) {
     notes:       "Pesagem confirmada — enviado para faturamento",
   })
 
+  // Hook financeiro
+  await generateReceivablesFromOrder(orderId, "aguardando_faturamento", session.user.id)
+
   revalidatePath(`/pedidos/${orderId}`)
   revalidatePath("/pedidos")
 }
@@ -249,6 +268,9 @@ export async function cancelOrder(orderId: string, notes?: string) {
     changed_by:  session.user.id,
     notes:       notes || "Pedido cancelado",
   })
+
+  // Hook financeiro: cancela recebimentos abertos vinculados a este pedido
+  await cancelReceivablesFromOrder(orderId)
 
   revalidatePath(`/pedidos/${orderId}`)
   revalidatePath("/pedidos")

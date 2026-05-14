@@ -10,6 +10,13 @@ import { ChevronLeft, ChevronRight, User, MapPin, Phone, ClipboardCheck, Zap, Fi
 import { OrderConditionsEditor } from "@/components/order-conditions-editor"
 import { OrderItemsEditor } from "@/components/order-items-editor"
 import { ShareOrderModal } from "@/components/orders/share-order-modal"
+import { OrderFinancialSection } from "@/components/financial/order-financial-section"
+import { OrderMarginPanel } from "@/components/orders/order-margin-panel"
+import { OrderTasks } from "@/components/orders/order-tasks"
+import { OrderAttachments } from "@/components/orders/order-attachments"
+import { CustomerIntelCard } from "@/components/orders/customer-intel-card"
+import { OrderSlaCard } from "@/components/orders/order-sla-card"
+import { getTenantVendedores } from "@/lib/queries"
 
 const DATE_SHORT = (d: string) =>
   new Date(d + "T12:00:00").toLocaleDateString("pt-BR", {
@@ -30,7 +37,17 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
   const session        = await auth()
   const isAdminOrOwner = ["owner", "admin"].includes(session!.user.role)
 
-  const [{ data: order }, { data: items }, { data: history }, { data: existingLink }] = await Promise.all([
+  const [
+    { data: order },
+    { data: items },
+    { data: history },
+    { data: existingLink },
+    { data: receivables },
+    { data: finConfig },
+    { data: tasks },
+    { data: attachments },
+    vendedores,
+  ] = await Promise.all([
     supabaseAdmin
       .from("orders")
       .select(`
@@ -43,7 +60,7 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
           rota_entrega, logradouro, numero, complemento, bairro, cep, cidade, estado,
           condicao_pagamento, tabela_preco
         ),
-        profiles!orders_owner_id_fkey ( full_name, email )
+        profiles!orders_owner_id_fkey ( full_name, email, commission_pct )
       `)
       .eq("id", id)
       .eq("tenant_id", session!.user.tenantId)
@@ -52,8 +69,8 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
       .from("order_items")
       .select(`
         id, requested_quantity, actual_weight, unit_price, subtotal,
-        discount_pct, discount_amount, item_notes,
-        products ( nome, sku, unidade_medida, metadata )
+        discount_pct, discount_amount, item_notes, preco_custo_snapshot,
+        products ( nome, sku, unidade_medida, metadata, preco_custo )
       `)
       .eq("order_id", id),
     supabaseAdmin
@@ -70,6 +87,33 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
+    supabaseAdmin
+      .from("accounts_receivable")
+      .select("id, description, amount, paid_amount, due_date, paid_at, status, installment_seq, installment_total")
+      .eq("origin_type", "order")
+      .eq("origin_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .order("installment_seq", { ascending: true, nullsFirst: true })
+      .order("due_date", { ascending: true }),
+    supabaseAdmin
+      .from("tenant_financial_config")
+      .select("auto_generate_receivables")
+      .eq("tenant_id", session!.user.tenantId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("order_tasks")
+      .select("id, title, done, due_date, assignee_id, completed_at, assignee:profiles!order_tasks_assignee_id_fkey ( full_name, email )")
+      .eq("order_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .order("done", { ascending: true })
+      .order("position", { ascending: true }),
+    supabaseAdmin
+      .from("order_attachments")
+      .select("id, file_name, file_size_bytes, mime_type, storage_path, category, description, uploaded_at")
+      .eq("order_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .order("uploaded_at", { ascending: false }),
+    getTenantVendedores(session!.user.tenantId),
   ])
 
   if (!order) notFound()
@@ -100,6 +144,66 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
 
   const orderNum     = String((order as any).order_number ?? 0).padStart(4, "0")
   const nomeExibicao = c?.nome_fantasia || c?.razao_social
+
+  // Items para o painel de margem (usa snapshot do custo; fallback para custo atual do produto)
+  const itemsMargin = (items ?? []).map((i: any) => ({
+    id:        i.id,
+    nome:      i.products?.nome ?? "—",
+    quantity:  Number(i.actual_weight ?? i.requested_quantity),
+    unitPrice: Number(i.unit_price),
+    cost:      i.preco_custo_snapshot != null ? Number(i.preco_custo_snapshot) : (i.products?.preco_custo != null ? Number(i.products.preco_custo) : null),
+    subtotal:  Number(i.subtotal),
+  }))
+
+  const owner = (order as any).profiles
+  const commissionPct = Number(owner?.commission_pct ?? 0)
+  const vendedorName  = owner?.full_name ?? owner?.email ?? null
+
+  // Cliente intel: busca pedidos anteriores + vencidos
+  const customerId = (order as any).customer_id ?? null
+  const [{ data: customerOrders }, { data: customerOverdueRecv }] = customerId
+    ? await Promise.all([
+        supabaseAdmin
+          .from("orders")
+          .select("id, order_number, estimated_total_amount, final_total_amount, created_at")
+          .eq("customer_id", customerId)
+          .eq("tenant_id", session!.user.tenantId)
+          .neq("status", "cancelado")
+          .order("created_at", { ascending: false })
+          .limit(50),
+        supabaseAdmin
+          .from("accounts_receivable")
+          .select("amount, paid_amount")
+          .eq("customer_id", customerId)
+          .eq("tenant_id", session!.user.tenantId)
+          .in("status", ["vencido", "parcial"])
+          .lt("due_date", new Date().toISOString().split("T")[0]),
+      ])
+    : [{ data: [] }, { data: [] }]
+
+  const allCustomerOrders = (customerOrders ?? []) as any[]
+  const previousOrders    = allCustomerOrders.filter((o) => o.id !== id)
+  const totalCustomerOrders = allCustomerOrders.length
+  const billedRevenue       = allCustomerOrders.reduce((s, o) => s + Number(o.final_total_amount ?? o.estimated_total_amount ?? 0), 0)
+  const avgTicket           = totalCustomerOrders > 0 ? billedRevenue / totalCustomerOrders : 0
+  const lastOrder           = previousOrders[0]
+  const daysSinceLast       = lastOrder
+    ? Math.floor((Date.now() - new Date(lastOrder.created_at).getTime()) / (24 * 60 * 60 * 1000))
+    : null
+
+  const totalOverdueReceivable = (customerOverdueRecv ?? []).reduce(
+    (s: number, r: any) => s + (Number(r.amount) - Number(r.paid_amount ?? 0)),
+    0
+  )
+
+  const previousOrdersList = previousOrders.slice(0, 5).map((o) => ({
+    id:            o.id,
+    order_number:  o.order_number,
+    total:         Number(o.final_total_amount ?? o.estimated_total_amount ?? 0),
+    created_at:    o.created_at,
+  }))
+
+  const customerName = c?.nome_fantasia || c?.razao_social || "—"
 
   return (
     <div className="min-h-full bg-blue-50">
@@ -188,6 +292,13 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
               />
             </div>
 
+            {/* SLA & Cycle time */}
+            <OrderSlaCard
+              history={(history ?? []) as any}
+              currentStatus={order.status}
+              deliveryDate={order.delivery_date}
+            />
+
             {/* Itens */}
             <OrderItemsEditor
               orderId={id}
@@ -200,6 +311,25 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
               totalDiscount={totalDiscount}
             />
 
+            {/* Rentabilidade */}
+            {isAdminOrOwner && (
+              <OrderMarginPanel
+                items={itemsMargin}
+                totalRevenue={Number(displayTotal ?? 0)}
+                totalDiscount={totalDiscount}
+                commissionPct={commissionPct}
+                vendedorName={vendedorName}
+              />
+            )}
+
+            {/* Financeiro */}
+            <OrderFinancialSection
+              orderId={id}
+              receivables={(receivables ?? []) as any}
+              orderTotal={Number(displayTotal ?? 0)}
+              autoGenEnabled={(finConfig as any)?.auto_generate_receivables ?? true}
+            />
+
             {/* Histórico */}
             {history && history.length > 0 && (
               <OrderHistory history={history as any} />
@@ -208,6 +338,34 @@ export default async function PedidoDetailPage({ params }: { params: Promise<{ i
 
           {/* ── Sidebar (1/3) ── */}
           <div className="space-y-4">
+
+            {/* Cliente Intel — comportamento histórico */}
+            {customerId && isAdminOrOwner && (
+              <CustomerIntelCard
+                customerId={customerId}
+                customerName={customerName}
+                totalOrders={totalCustomerOrders}
+                totalRevenue={billedRevenue}
+                avgTicket={avgTicket}
+                daysSinceLast={daysSinceLast}
+                thisOrderTotal={Number(displayTotal ?? 0)}
+                lastOrders={previousOrdersList}
+                totalOverdueReceivable={totalOverdueReceivable}
+              />
+            )}
+
+            {/* Tarefas/Checklist */}
+            <OrderTasks
+              orderId={id}
+              tasks={(tasks ?? []) as any}
+              vendedores={vendedores ?? []}
+            />
+
+            {/* Documentos & Anexos */}
+            <OrderAttachments
+              orderId={id}
+              attachments={(attachments ?? []) as any}
+            />
 
             {/* Cliente */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-card p-5">

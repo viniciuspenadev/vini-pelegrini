@@ -160,6 +160,15 @@ export function ProductForm({ product, canEditFiscal = false, regimeTributario }
             defaultValue={product?.preco_base ? String(product.preco_base) : "0"}
             leadingIcon={<DollarSign />}
             prefix="R$"
+            hint="Preço de venda padrão"
+          />
+          <MaskedInput
+            mask="currency"
+            label="Preço de Custo (CMV)" name="preco_custo"
+            defaultValue={product?.preco_custo ? String(product.preco_custo) : ""}
+            leadingIcon={<DollarSign />}
+            prefix="R$"
+            hint="Custo médio — usado pra calcular margem"
           />
           {product && (
             <div className="space-y-1.5">

@@ -10,6 +10,7 @@ import {
   ClipboardList, FileEdit, Users, Box, Tag, BadgeDollarSign,
   TrendingUp, TrendingDown, LineChart,
   Settings, FileCheck, FileX, UserCog, CreditCard, ScrollText,
+  MessageCircle, Inbox, Contact, Megaphone,
 } from "lucide-react"
 
 interface NavItem {
@@ -60,14 +61,27 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    key:   "marketing",
+    label: "Marketing",
+    icon:  <MessageCircle className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
+    children: [
+      { label: "Inbox",         href: "/marketing",              icon: <Inbox     className={subIcon} strokeWidth={1.75} /> },
+      { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Campanhas",     href: "/marketing/campanhas",    icon: <Megaphone className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Configuração",  href: "/marketing/configuracao", icon: <Settings  className={subIcon} strokeWidth={1.75} /> },
+    ],
+  },
+  {
     key:   "financeiro",
     label: "Financeiro",
     icon:  <Wallet className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
-    soon:  true,
+    fiscalRole: true,
     children: [
-      { label: "Contas a Receber", href: "/financeiro/receber", icon: <TrendingUp   className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Contas a Pagar",   href: "/financeiro/pagar",   icon: <TrendingDown className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Fluxo de Caixa",   href: "/financeiro/fluxo",   icon: <LineChart    className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Visão Geral",      href: "/financeiro",              icon: <LayoutDashboard className={subIcon} strokeWidth={1.75} /> },
+      { label: "Contas a Receber", href: "/financeiro/recebimentos", icon: <TrendingUp     className={subIcon} strokeWidth={1.75} /> },
+      { label: "Contas a Pagar",   href: "/financeiro/pagamentos",   icon: <TrendingDown   className={subIcon} strokeWidth={1.75} /> },
+      { label: "Fluxo de Caixa",   href: "/financeiro/fluxo",        icon: <LineChart      className={subIcon} strokeWidth={1.75} /> },
+      { label: "Contas Bancárias", href: "/financeiro/contas",       icon: <CreditCard     className={subIcon} strokeWidth={1.75} /> },
     ],
   },
   {

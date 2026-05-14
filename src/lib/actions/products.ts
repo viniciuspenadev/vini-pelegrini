@@ -51,6 +51,8 @@ export async function createProduct(formData: FormData) {
     dias_validade:       parseInt(formData.get("dias_validade") as string) || null,
   }
 
+  const precoCusto = parseFloat(formData.get("preco_custo") as string)
+
   const payload = {
     tenant_id:      session.user.tenantId,
     created_by:     session.user.id,
@@ -59,6 +61,7 @@ export async function createProduct(formData: FormData) {
     categoria:      formData.get("categoria") as string || null,
     unidade_medida: formData.get("unidade_medida") as string || "kg",
     preco_base:     parseFloat(formData.get("preco_base") as string) || 0,
+    preco_custo:    isNaN(precoCusto) ? null : precoCusto,
     metadata,
     ...(canEditFiscal ? buildFiscalPayload(formData) : {}),
   }
@@ -83,12 +86,15 @@ export async function updateProduct(id: string, formData: FormData) {
     dias_validade:       parseInt(formData.get("dias_validade") as string) || null,
   }
 
+  const precoCustoUpdate = parseFloat(formData.get("preco_custo") as string)
+
   const payload = {
     nome:           formData.get("nome") as string,
     sku:            formData.get("sku") as string || null,
     categoria:      formData.get("categoria") as string || null,
     unidade_medida: formData.get("unidade_medida") as string || "kg",
     preco_base:     parseFloat(formData.get("preco_base") as string) || 0,
+    preco_custo:    isNaN(precoCustoUpdate) ? null : precoCustoUpdate,
     status:         formData.get("status") as string,
     metadata,
     ...(canEditFiscal ? buildFiscalPayload(formData) : {}),

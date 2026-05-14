@@ -12,6 +12,7 @@ import {
 } from "lucide-react"
 import Link from "next/link"
 import { VendedorSwitch } from "@/components/vendedor-switch"
+import { CustomerFinancialSection } from "@/components/financial/customer-financial-section"
 import type { Customer } from "@/types/database"
 
 const BRL = (v: number | null) =>
@@ -50,7 +51,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   const session = await auth()
   const isAdminOrOwner = ["owner", "admin"].includes(session!.user.role)
 
-  const [{ data: customer }, { data: orders }, { data: vendedorHistory }, vendedores] = await Promise.all([
+  const [{ data: customer }, { data: orders }, { data: vendedorHistory }, vendedores, { data: receivables }] = await Promise.all([
     supabaseAdmin
       .from("customers")
       .select("*, vendedor:profiles!customers_vendedor_id_fkey ( id, full_name, email )")
@@ -74,6 +75,13 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
       .eq("customer_id", id)
       .order("changed_at", { ascending: false }),
     getTenantVendedores(session!.user.tenantId),
+    supabaseAdmin
+      .from("accounts_receivable")
+      .select("id, description, amount, paid_amount, due_date, paid_at, status")
+      .eq("customer_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .order("due_date", { ascending: false })
+      .limit(500),
   ])
 
   if (!customer) notFound()
@@ -143,6 +151,14 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
                 </div>
               ))}
             </div>
+
+            {/* Financeiro do cliente */}
+            <CustomerFinancialSection
+              customerId={id}
+              customerName={nomeExibicao}
+              limiteCredito={Number(c.limite_credito ?? 0)}
+              receivables={(receivables ?? []) as any}
+            />
 
             {/* Pedidos do cliente */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
