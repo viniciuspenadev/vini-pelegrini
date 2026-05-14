@@ -59,7 +59,10 @@ async function downloadAndStoreMedia(
       return { error: errMsg }
     }
 
-    const mimeType = result.mimetype ?? null
+    // Normaliza mime type — WhatsApp pode enviar "audio/ogg; codecs=opus"
+    // Storage do Supabase só aceita o mime base sem parâmetros
+    const rawMime  = result.mimetype ?? null
+    const mimeType = rawMime ? rawMime.split(";")[0].trim() : null
     const ext      = (mimeType && MIME_EXTENSIONS[mimeType]) ?? "bin"
     const baseName = knownFileName ?? result.fileName ?? `${contentType}_${Date.now()}.${ext}`
     const safe     = baseName.replace(/[^a-zA-Z0-9.\-_]/g, "_")
