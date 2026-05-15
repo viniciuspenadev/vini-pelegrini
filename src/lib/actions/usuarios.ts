@@ -107,6 +107,28 @@ export async function toggleUserActive(userId: string, active: boolean) {
   revalidatePath(`/usuarios/${userId}`)
 }
 
+export async function updateUserPipelineVisibility(userId: string, viewAll: boolean) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+  requireAdminOrOwner(session.user.role)
+
+  const { data: membership } = await supabaseAdmin
+    .from("tenant_users")
+    .select("id")
+    .eq("tenant_id", session.user.tenantId)
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  if (!membership) throw new Error("Usuário não pertence a este tenant")
+
+  await supabaseAdmin
+    .from("profiles")
+    .update({ view_all_conversations: viewAll })
+    .eq("id", userId)
+
+  revalidatePath(`/usuarios/${userId}`)
+}
+
 export async function updateUserCommission(userId: string, commissionPct: number) {
   const session = await auth()
   if (!session) throw new Error("Não autenticado")

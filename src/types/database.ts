@@ -118,6 +118,45 @@ export interface OrderAttachment {
 // Tags universais (polimórficas)
 // ═══════════════════════════════════════════════════════════════
 
+// ═══════════════════════════════════════════════════════════════
+// Pipeline / Leads (Marketing CRM)
+// ═══════════════════════════════════════════════════════════════
+
+export interface Pipeline {
+  id:          string
+  tenant_id:   string
+  name:        string
+  description: string | null
+  color:       string
+  is_default:  boolean
+  position:    number
+  active:      boolean
+  created_at:  string
+  updated_at:  string
+  created_by:  string | null
+}
+
+export interface PipelineStage {
+  id:               string
+  pipeline_id:      string
+  tenant_id:        string
+  name:             string
+  color:            string
+  position:         number
+  probability_pct:  number
+  is_won:           boolean
+  is_lost:          boolean
+  created_at:       string
+}
+
+export interface TenantMarketingConfig {
+  tenant_id:                       string
+  auto_create_lead_from_whatsapp:  boolean
+  default_pipeline_id:             string | null
+  created_at:                      string
+  updated_at:                      string
+}
+
 export type TaggableType = "contact" | "customer" | "order" | "conversation" | "lead"
 
 export interface Tag {

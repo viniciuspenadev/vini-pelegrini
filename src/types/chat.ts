@@ -10,18 +10,23 @@ export type MessageContentType     = "text" | "image" | "audio" | "video" | "doc
 export type MessageDeliveryStatus  = "pending" | "sent" | "delivered" | "read" | "failed"
 
 export interface WhatsAppInstance {
-  id:              string
-  tenant_id:       string
-  instance_name:   string
-  instance_token:  string | null
-  phone_number:    string | null
-  status:          WhatsAppInstanceStatus
-  evolution_url:   string
-  evolution_key:   string
-  webhook_url:     string | null
-  settings:        Record<string, unknown>
-  created_at:      string
-  updated_at:      string
+  id:                  string
+  tenant_id:           string
+  instance_name:       string
+  instance_token:      string | null
+  phone_number:        string | null
+  status:              WhatsAppInstanceStatus
+  evolution_url:       string
+  evolution_key:       string
+  webhook_url:         string | null
+  settings:            Record<string, unknown>
+  // Health / heartbeat
+  last_heartbeat_at:   string | null
+  reconnect_attempts:  number
+  user_disconnected:   boolean
+  last_error:          string | null
+  created_at:          string
+  updated_at:          string
 }
 
 export interface ChatContact {
@@ -59,11 +64,22 @@ export interface ChatConversation {
   unread_count:          number
   tags:                  string[]
   metadata:              Record<string, unknown>
+  // Pipeline fields
+  pipeline_id:           string | null
+  stage_id:              string | null
+  card_position:         number
+  estimated_value:       number | null
+  expected_close_date:   string | null
+  lost_reason:           string | null
+  won_at:                string | null
+  lost_at:               string | null
+  participants:          string[]
   created_at:            string
   updated_at:            string
   // Joined
   chat_contacts?: ChatContact
   profiles?:      { full_name: string | null } | null
+  pipeline_stages?: { id: string; name: string; color: string; is_won: boolean; is_lost: boolean } | null
 }
 
 export interface ChatMessage {

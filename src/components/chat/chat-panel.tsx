@@ -27,7 +27,9 @@ const STATUS_OPTIONS = [
 ]
 
 export function ChatPanel({ conversation, messages, quickReplies, agents, onStatusChange, onAssign }: Props) {
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const messagesEndRef     = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  const prevConvIdRef      = useRef<string | null>(null)
 
   const contact = conversation.chat_contacts
   const name    = contact?.customers?.nome_fantasia ?? contact?.customers?.razao_social ?? contact?.push_name ?? formatPhoneDisplay(contact?.phone_number ?? "")
@@ -35,10 +37,49 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
 
   const currentStatus = STATUS_OPTIONS.find((s) => s.key === conversation.status) ?? STATUS_OPTIONS[0]
 
-  // Auto-scroll to bottom on new messages
+  // Auto-scroll robusto: força scroll após cada imagem/áudio carregar
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
-  }, [messages.length])
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    prevConvIdRef.current = conversation.id
+
+    function forceBottom() {
+      if (!container) return
+      container.scrollTop = container.scrollHeight
+    }
+
+    // 1. Scroll imediato (textos já estão renderizados)
+    forceBottom()
+
+    // 2. Re-scroll após cada imagem/vídeo dentro do container carregar
+    //    (imagens aumentam a altura DEPOIS de baixar)
+    const mediaElements = container.querySelectorAll("img, video, audio")
+    const cleanups: Array<() => void> = []
+
+    mediaElements.forEach((el) => {
+      const onLoad = () => forceBottom()
+      el.addEventListener("load", onLoad)
+      el.addEventListener("loadedmetadata", onLoad)
+      el.addEventListener("error", onLoad)  // mesmo se falhar, re-scroll pra ignorar o erro visual
+      cleanups.push(() => {
+        el.removeEventListener("load", onLoad)
+        el.removeEventListener("loadedmetadata", onLoad)
+        el.removeEventListener("error", onLoad)
+      })
+    })
+
+    // 3. Re-scroll após um delay maior (pega fontes carregando, layout reflow)
+    const t1 = setTimeout(forceBottom, 100)
+    const t2 = setTimeout(forceBottom, 400)
+
+    return () => {
+      clearTimeout(t1)
+      clearTimeout(t2)
+      cleanups.forEach((fn) => fn())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversation.id, messages.length])
 
   return (
     <div className="flex flex-col h-full bg-slate-50">
@@ -137,6 +178,7 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
 
       {/* Messages area */}
       <div
+        ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-2 py-4 space-y-1"
         style={{ backgroundImage: "radial-gradient(circle at 1px 1px, rgba(0,0,0,0.03) 1px, transparent 0)", backgroundSize: "20px 20px" }}
       >

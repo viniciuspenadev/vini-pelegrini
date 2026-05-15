@@ -297,10 +297,22 @@ async function handleConnectionUpdate(instanceId: string, data: unknown) {
   }
 
   const newStatus = statusMap[d.state] ?? "disconnected"
+  const now       = new Date().toISOString()
+
+  const update: Record<string, unknown> = {
+    status:            newStatus,
+    last_heartbeat_at: now,
+    updated_at:        now,
+  }
+  // Quando reconecta com sucesso, zera flags de erro
+  if (newStatus === "connected") {
+    update.reconnect_attempts = 0
+    update.last_error         = null
+  }
 
   await supabaseAdmin
     .from("whatsapp_instances")
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update(update)
     .eq("id", instanceId)
 }
 
@@ -423,15 +435,41 @@ async function findOrCreateConversation(
 
   if (existing) return existing
 
-  // Cria nova conversa
+  // Auto-atribui ao pipeline default + primeiro estágio
+  let pipelineId: string | null = null
+  let stageId:    string | null = null
+
+  const { data: marketingConfig } = await supabaseAdmin
+    .from("tenant_marketing_config")
+    .select("default_pipeline_id")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+
+  if (marketingConfig?.default_pipeline_id) {
+    pipelineId = marketingConfig.default_pipeline_id
+    const { data: firstStage } = await supabaseAdmin
+      .from("pipeline_stages")
+      .select("id")
+      .eq("pipeline_id", pipelineId)
+      .eq("tenant_id", tenantId)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+    stageId = firstStage?.id ?? null
+  }
+
+  // Cria nova conversa já no pipeline
   const { data: newConv, error } = await supabaseAdmin
     .from("chat_conversations")
     .insert({
-      tenant_id:    tenantId,
-      contact_id:   contactId,
-      instance_id:  instanceId,
-      status:       "open",
-      unread_count: 0,
+      tenant_id:     tenantId,
+      contact_id:    contactId,
+      instance_id:   instanceId,
+      status:        "open",
+      unread_count:  0,
+      pipeline_id:   pipelineId,
+      stage_id:      stageId,
+      card_position: 0,
     })
     .select("id, status, unread_count")
     .single()

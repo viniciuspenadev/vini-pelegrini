@@ -10,8 +10,9 @@ import {
   ClipboardList, FileEdit, Users, Box, Tag, BadgeDollarSign,
   TrendingUp, TrendingDown, LineChart,
   Settings, FileCheck, FileX, UserCog, CreditCard, ScrollText,
-  MessageCircle, Inbox, Contact, Megaphone,
+  MessageCircle, Inbox, Contact, Megaphone, Workflow,
 } from "lucide-react"
+import { getUnreadTotal } from "@/lib/actions/chat"
 
 interface NavItem {
   label: string
@@ -66,6 +67,7 @@ const NAV: NavGroup[] = [
     icon:  <MessageCircle className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
     children: [
       { label: "Inbox",         href: "/marketing",              icon: <Inbox     className={subIcon} strokeWidth={1.75} /> },
+      { label: "Pipeline",      href: "/marketing/pipeline",     icon: <Workflow  className={subIcon} strokeWidth={1.75} /> },
       { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} /> },
       { label: "Campanhas",     href: "/marketing/campanhas",    icon: <Megaphone className={subIcon} strokeWidth={1.75} />, soon: true },
       { label: "Configuração",  href: "/marketing/configuracao", icon: <Settings  className={subIcon} strokeWidth={1.75} /> },
@@ -118,8 +120,23 @@ interface SidebarProps {
 export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarProps) {
   const pathname              = usePathname()
   const [signing, setSigning] = useState(false)
+  const [unreadTotal, setUnreadTotal] = useState(0)
   const isAdminOrOwner        = ["owner", "admin"].includes(userRole)
   const canViewFiscal         = ["owner", "admin", "financeiro"].includes(userRole)
+
+  // Polling do total de mensagens não-lidas (badge no menu Marketing)
+  useEffect(() => {
+    let active = true
+    async function tick() {
+      try {
+        const n = await getUnreadTotal()
+        if (active) setUnreadTotal(n)
+      } catch { /* silencioso */ }
+    }
+    tick()
+    const id = setInterval(tick, 10000)  // 10s
+    return () => { active = false; clearInterval(id) }
+  }, [])
 
   // Filter visible groups by role
   const visibleNav = useMemo(() => {
@@ -237,13 +254,18 @@ export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarPr
               >
                 {/* Icon pill — active state when a child is active */}
                 <span className={`
-                  flex size-11 items-center justify-center rounded-xl shrink-0 transition-all duration-150
+                  relative flex size-11 items-center justify-center rounded-xl shrink-0 transition-all duration-150
                   ${groupActive
                     ? "bg-blue-50 text-blue-600 ring-1 ring-blue-100"
                     : "text-slate-500 group-hover/item:bg-slate-100 group-hover/item:text-slate-900"
                   }
                 `}>
                   {group.icon}
+                  {group.key === "marketing" && unreadTotal > 0 && (
+                    <span className="absolute top-1 right-1 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center ring-2 ring-white">
+                      {unreadTotal > 99 ? "99+" : unreadTotal}
+                    </span>
+                  )}
                 </span>
 
                 {/* Label + chevron — hidden when collapsed */}
@@ -274,6 +296,7 @@ export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarPr
                 <div className="mt-1 mb-1 ml-5 pl-3 border-l border-slate-200 space-y-0.5">
                   {group.children!.map((item) => {
                     const active = isItemActive(item.href)
+                    const showUnread = item.href === "/marketing" && unreadTotal > 0
                     return (
                       <Link
                         key={item.href}
@@ -295,6 +318,11 @@ export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarPr
                         <span className="whitespace-nowrap flex-1 opacity-0 group-hover/sb:opacity-100 transition-opacity duration-150 delay-75">
                           {item.label}
                         </span>
+                        {showUnread && (
+                          <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center opacity-0 group-hover/sb:opacity-100 transition-opacity duration-150 delay-75">
+                            {unreadTotal > 99 ? "99+" : unreadTotal}
+                          </span>
+                        )}
                         {item.soon && (
                           <span className="whitespace-nowrap rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-semibold text-slate-400 uppercase tracking-wider opacity-0 group-hover/sb:opacity-100 transition-opacity duration-150 delay-75">
                             breve

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useTransition, useCallback, useRef } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { ConversationList } from "@/components/chat/conversation-list"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { ContactSidebar } from "@/components/chat/contact-sidebar"
@@ -40,26 +41,47 @@ interface RecentOrder {
   created_at:             string
 }
 
+interface PipelineMini { id: string; name: string; color: string; is_default: boolean }
+interface StageMini    { id: string; pipeline_id: string; name: string; color: string; position: number; is_won: boolean; is_lost: boolean }
+interface TagMini      { id: string; name: string; color: string }
+
+interface CustomerFinancials {
+  ltv:                number
+  open_orders:        number
+  receivable_open:    number
+  receivable_overdue: number
+  on_time_rate:       number | null
+}
+
 interface Props {
-  conversations:  ChatConversation[]
-  messages:       Record<string, ChatMessage[]>
-  contacts:       Record<string, ChatContact>
-  customers:      Record<string, CustomerInfo>
-  recentOrders:   Record<string, RecentOrder[]>
-  quickReplies:   ChatQuickReply[]
-  agents:         Array<{ id: string; full_name: string | null }>
-  instanceStatus: string
+  conversations:      ChatConversation[]
+  messages:           Record<string, ChatMessage[]>
+  contacts:           Record<string, ChatContact>
+  customers:          Record<string, CustomerInfo>
+  recentOrders:       Record<string, RecentOrder[]>
+  customerFinancials?: Record<string, CustomerFinancials>
+  quickReplies:       ChatQuickReply[]
+  agents:             Array<{ id: string; full_name: string | null }>
+  instanceStatus:     string
+  pipelines?:         PipelineMini[]
+  stages?:            StageMini[]
+  tags?:              TagMini[]
+  tagsByContact?:     Record<string, string[]>
 }
 
 export function InboxClient({
   conversations: initialConversations,
-  messages: initialMessages,
   contacts: initialContacts,
   customers,
   recentOrders,
+  customerFinancials = {},
   quickReplies,
   agents,
   instanceStatus,
+  pipelines      = [],
+  stages         = [],
+  tags           = [],
+  tagsByContact  = {},
 }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [activeId, setActiveId]           = useState<string | null>(null)
@@ -70,6 +92,9 @@ export function InboxClient({
   const [, startTransition]               = useTransition()
   const pollRef                           = useRef<NodeJS.Timeout | null>(null)
   const activeIdRef                       = useRef<string | null>(null)
+  const searchParams                      = useSearchParams()
+  const router                            = useRouter()
+  const pathname                          = usePathname()
 
   // Keep ref in sync
   activeIdRef.current = activeId
@@ -109,6 +134,26 @@ export function InboxClient({
       )
     })
   }, [loadMessages])
+
+  // ── Auto-seleciona conversa via querystring ?conversation=X (vindo do Kanban) ──
+  useEffect(() => {
+    const convParam = searchParams.get("conversation")
+    if (!convParam || activeIdRef.current === convParam) return
+
+    // Verifica se a conversa existe na lista (pode estar em outro filtro de status)
+    const exists = conversations.find((c) => c.id === convParam)
+    if (exists) {
+      // Se está num filtro diferente, ajusta o filtro pra mostrar
+      if (exists.status !== statusFilter && statusFilter !== "all") {
+        setStatusFilter(exists.status)
+      }
+      handleSelect(convParam)
+    }
+
+    // Limpa o query param da URL pra não re-abrir em reloads
+    router.replace(pathname, { scroll: false })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, conversations.length])
 
   // ── Polling: refresh conversations + active messages every 5s ──
   useEffect(() => {
@@ -215,6 +260,11 @@ export function InboxClient({
           onSelect={handleSelect}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
+          pipelines={pipelines}
+          stages={stages}
+          tags={tags}
+          tagsByContact={tagsByContact}
+          agents={agents}
         />
       </div>
 
@@ -245,9 +295,16 @@ export function InboxClient({
       {/* Right: Contact sidebar */}
       {activeConv && activeContact && (
         <ContactSidebar
+          conversation={activeConv}
           contact={activeContact}
           customer={activeCustomer ?? null}
           recentOrders={activeOrders}
+          financials={activeContact.customer_id ? (customerFinancials[activeContact.customer_id] ?? null) : null}
+          pipelines={pipelines}
+          stages={stages}
+          tags={tags}
+          tagsByContact={tagsByContact}
+          agents={agents}
         />
       )}
     </div>

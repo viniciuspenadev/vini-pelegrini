@@ -2,17 +2,18 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
-import { updateUserRole, toggleUserActive, resetUserPassword, updateUserCommission } from "@/lib/actions/usuarios"
+import { updateUserRole, toggleUserActive, resetUserPassword, updateUserCommission, updateUserPipelineVisibility } from "@/lib/actions/usuarios"
 import { Button } from "@/components/ui/button"
-import { ShieldCheck, Power, KeyRound, Award } from "lucide-react"
+import { ShieldCheck, Power, KeyRound, Award, Eye } from "lucide-react"
 
 interface Props {
-  userId:         string
-  currentRole:    string
-  isActive:       boolean
-  isTargetOwner:  boolean
-  sessionRole:    string
-  commissionPct?: number
+  userId:                string
+  currentRole:           string
+  isActive:              boolean
+  isTargetOwner:         boolean
+  sessionRole:           string
+  commissionPct?:        number
+  viewAllPipelineLeads?: boolean
 }
 
 const selectClass = "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -30,13 +31,14 @@ function Card({ icon, title, children }: { icon: React.ReactNode; title: string;
   )
 }
 
-export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner, sessionRole, commissionPct = 0 }: Props) {
+export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner, sessionRole, commissionPct = 0, viewAllPipelineLeads = false }: Props) {
   const router          = useRouter()
   const [pending, start] = useTransition()
   const [error, setError] = useState<string | null>(null)
   const [newPwd, setNewPwd] = useState("")
   const [role, setRole] = useState(currentRole)
   const [commission, setCommission] = useState(String(commissionPct))
+  const [viewAll, setViewAll]       = useState(viewAllPipelineLeads)
 
   const isOwnerSession  = sessionRole === "owner"
   const canChangeRole   = !isTargetOwner || isOwnerSession
@@ -59,6 +61,20 @@ export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner,
         await toggleUserActive(userId, !isActive)
         router.refresh()
       } catch (e: any) { setError(e.message) }
+    })
+  }
+
+  async function handleVisibilityToggle(next: boolean) {
+    setViewAll(next)  // otimista
+    setError(null)
+    start(async () => {
+      try {
+        await updateUserPipelineVisibility(userId, next)
+        router.refresh()
+      } catch (e: any) {
+        setViewAll(!next)  // rollback
+        setError(e.message)
+      }
     })
   }
 
@@ -139,6 +155,37 @@ export function UserActionsPanel({ userId, currentRole, isActive, isTargetOwner,
               Salvar
             </Button>
           </div>
+        </Card>
+      )}
+
+      {/* Visibilidade do Inbox/Pipeline */}
+      {isSalesRole && (
+        <Card icon={<Eye />} title="Visibilidade nas Conversas e Pipeline">
+          <p className="text-sm text-muted-foreground mb-3">
+            Controla se vê apenas as conversas atribuídas a ele ou todas do tenant. Vale tanto pro Inbox quanto pro Kanban.
+            <br /><span className="text-xs">Owners e admins sempre veem tudo, independente desta opção.</span>
+          </p>
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div className="relative shrink-0">
+              <input
+                type="checkbox"
+                checked={viewAll}
+                onChange={(e) => handleVisibilityToggle(e.target.checked)}
+                disabled={pending || (isTargetOwner && !isOwnerSession)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-blue-600 transition-colors" />
+              <div className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform peer-checked:translate-x-4" />
+            </div>
+            <div>
+              <p className="text-sm font-medium text-foreground">
+                {viewAll ? "Vê todas as conversas" : "Vê apenas as próprias"}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {viewAll ? "Visão completa de toda a equipe" : "Vê apenas onde é o responsável atribuído"}
+              </p>
+            </div>
+          </label>
         </Card>
       )}
 

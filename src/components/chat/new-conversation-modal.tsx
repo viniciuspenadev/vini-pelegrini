@@ -1,0 +1,293 @@
+"use client"
+
+import { useState, useEffect, useTransition } from "react"
+import { useRouter } from "next/navigation"
+import { X, Search, Phone, User, Building2, Loader2 } from "lucide-react"
+import {
+  searchContactsAndCustomers,
+  createManualConversation,
+} from "@/lib/actions/chat"
+import { formatPhoneDisplay } from "@/lib/evolution-api"
+
+interface ContactResult {
+  id:           string
+  phone_number: string
+  push_name:    string | null
+  customer_id:  string | null
+  customers:    { razao_social: string; nome_fantasia: string | null } | null
+}
+
+interface CustomerResult {
+  id:                 string
+  razao_social:       string
+  nome_fantasia:      string | null
+  comprador_nome:     string | null
+  comprador_whatsapp: string | null
+  cnpj_cpf:           string
+}
+
+interface Props {
+  open:    boolean
+  onClose: () => void
+}
+
+export function NewConversationModal({ open, onClose }: Props) {
+  const router = useRouter()
+  const [tab, setTab]                 = useState<"search" | "phone">("search")
+  const [search, setSearch]           = useState("")
+  const [contacts, setContacts]       = useState<ContactResult[]>([])
+  const [customers, setCustomers]     = useState<CustomerResult[]>([])
+  const [phone, setPhone]             = useState("")
+  const [name, setName]               = useState("")
+  const [searching, setSearching]     = useState(false)
+  const [isPending, startTransition]  = useTransition()
+  const [error, setError]             = useState<string | null>(null)
+
+  // Reset ao abrir
+  useEffect(() => {
+    if (open) {
+      setSearch("")
+      setPhone("")
+      setName("")
+      setContacts([])
+      setCustomers([])
+      setError(null)
+      setTab("search")
+    }
+  }, [open])
+
+  // Debounced search
+  useEffect(() => {
+    if (tab !== "search" || search.trim().length < 2) {
+      setContacts([])
+      setCustomers([])
+      return
+    }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      try {
+        const r = await searchContactsAndCustomers(search)
+        setContacts(r.contacts as ContactResult[])
+        setCustomers(r.customers as CustomerResult[])
+      } catch (e) {
+        console.error(e)
+      } finally {
+        setSearching(false)
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [search, tab])
+
+  function handleCreate(input: { phone?: string; contactId?: string; customerId?: string; pushName?: string }) {
+    setError(null)
+    startTransition(async () => {
+      try {
+        const r = await createManualConversation(input)
+        onClose()
+        router.push(`/marketing?conversation=${r.id}`)
+        router.refresh()
+      } catch (e) {
+        setError((e as Error).message)
+      }
+    })
+  }
+
+  if (!open) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <h2 className="text-sm font-bold text-slate-900">Nova conversa</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="size-7 rounded-lg hover:bg-slate-100 text-slate-400 flex items-center justify-center"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 px-4 pt-3">
+          <button
+            type="button"
+            onClick={() => setTab("search")}
+            className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${
+              tab === "search" ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <Search className="size-3.5 inline mr-1" />
+            Buscar existente
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("phone")}
+            className={`flex-1 text-xs font-semibold py-2 rounded-lg transition-colors ${
+              tab === "phone" ? "bg-blue-50 text-blue-600" : "text-slate-500 hover:bg-slate-50"
+            }`}
+          >
+            <Phone className="size-3.5 inline mr-1" />
+            Novo telefone
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-4">
+          {tab === "search" ? (
+            <div>
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-3.5 text-slate-400" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Nome, telefone ou CNPJ..."
+                  className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                />
+                {searching && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 size-3.5 text-blue-500 animate-spin" />
+                )}
+              </div>
+
+              {search.length < 2 && (
+                <p className="text-[11px] text-slate-400 text-center py-6">
+                  Digite ao menos 2 caracteres para buscar contatos ou clientes.
+                </p>
+              )}
+
+              {contacts.length > 0 && (
+                <div className="mb-3">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Contatos WhatsApp
+                  </p>
+                  <div className="space-y-1">
+                    {contacts.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleCreate({ contactId: c.id })}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 text-left transition-colors disabled:opacity-50"
+                      >
+                        <div className="size-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                          <User className="size-3.5 text-blue-600" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-slate-700 truncate">
+                            {c.customers?.nome_fantasia ?? c.customers?.razao_social ?? c.push_name ?? formatPhoneDisplay(c.phone_number)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono">
+                            {formatPhoneDisplay(c.phone_number)}
+                          </p>
+                        </div>
+                        {c.customer_id && (
+                          <span className="text-[9px] font-semibold bg-green-50 text-green-700 px-1.5 py-0.5 rounded">
+                            Cliente
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {customers.length > 0 && (
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
+                    Clientes
+                  </p>
+                  <div className="space-y-1">
+                    {customers.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        disabled={isPending || !c.comprador_whatsapp}
+                        onClick={() => handleCreate({ customerId: c.id, pushName: c.nome_fantasia ?? c.razao_social })}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-50 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        title={!c.comprador_whatsapp ? "Cliente sem WhatsApp cadastrado" : ""}
+                      >
+                        <div className="size-7 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                          <Building2 className="size-3.5 text-green-700" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-slate-700 truncate">
+                            {c.nome_fantasia ?? c.razao_social}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate">
+                            {c.comprador_whatsapp
+                              ? formatPhoneDisplay(c.comprador_whatsapp)
+                              : "Sem WhatsApp cadastrado"}
+                          </p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {search.length >= 2 && !searching && contacts.length === 0 && customers.length === 0 && (
+                <p className="text-[11px] text-slate-400 text-center py-6">
+                  Nada encontrado. Tente a aba <strong>Novo telefone</strong>.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Telefone com DDD <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="tel"
+                  autoFocus
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="11999998888"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Apenas dígitos. DDI 55 (Brasil) é adicionado automaticamente.
+                </p>
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                  Nome (opcional)
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Como salvar este contato"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                />
+              </div>
+
+              {error && (
+                <p className="text-[11px] text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+              )}
+
+              <button
+                type="button"
+                disabled={isPending || phone.replace(/\D/g, "").length < 10}
+                onClick={() => handleCreate({ phone, pushName: name || undefined })}
+                className="w-full flex items-center justify-center gap-2 py-2 text-xs font-semibold bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg transition-colors"
+              >
+                {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Phone className="size-3.5" />}
+                Iniciar conversa
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
