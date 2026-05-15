@@ -14,7 +14,8 @@ interface ContactResult {
   phone_number: string
   push_name:    string | null
   customer_id:  string | null
-  customers:    { razao_social: string; nome_fantasia: string | null } | null
+  // Supabase devolve relação como array — pegamos o primeiro item ao renderizar
+  customers:    Array<{ razao_social: string; nome_fantasia: string | null }> | null
 }
 
 interface CustomerResult {
@@ -67,8 +68,8 @@ export function NewConversationModal({ open, onClose }: Props) {
       setSearching(true)
       try {
         const r = await searchContactsAndCustomers(search)
-        setContacts(r.contacts as ContactResult[])
-        setCustomers(r.customers as CustomerResult[])
+        setContacts(r.contacts as unknown as ContactResult[])
+        setCustomers(r.customers as unknown as CustomerResult[])
       } catch (e) {
         console.error(e)
       } finally {
@@ -183,7 +184,7 @@ export function NewConversationModal({ open, onClose }: Props) {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-xs font-medium text-slate-700 truncate">
-                            {c.customers?.nome_fantasia ?? c.customers?.razao_social ?? c.push_name ?? formatPhoneDisplay(c.phone_number)}
+                            {c.customers?.[0]?.nome_fantasia ?? c.customers?.[0]?.razao_social ?? c.push_name ?? formatPhoneDisplay(c.phone_number)}
                           </p>
                           <p className="text-[10px] text-slate-400 font-mono">
                             {formatPhoneDisplay(c.phone_number)}
