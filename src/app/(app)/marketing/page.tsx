@@ -2,12 +2,21 @@ import { auth } from "@/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 import { InboxClient } from "@/components/chat/inbox-client"
 import type { ChatConversation, ChatMessage, ChatContact, ChatQuickReply } from "@/types/chat"
+import { getSegmentConfig } from "@/lib/segments/registry"
 
 export default async function MarketingInboxPage() {
   const session = await auth()
   if (!session) return null
 
   const tenantId = session.user.tenantId
+
+  // 0. Segment do tenant — define como o ContactSidebar se comporta
+  const { data: tenantRow } = await supabaseAdmin
+    .from("tenants")
+    .select("segment")
+    .eq("id", tenantId)
+    .single()
+  const segmentConfig = getSegmentConfig(tenantRow?.segment ?? null)
 
   // 1. Busca instância WhatsApp
   const { data: instance } = await supabaseAdmin
@@ -31,6 +40,7 @@ export default async function MarketingInboxPage() {
           quickReplies={[]}
           agents={[]}
           instanceStatus={instanceStatus}
+          segmentConfig={segmentConfig}
         />
       </div>
     )
@@ -136,10 +146,10 @@ export default async function MarketingInboxPage() {
     messagesByConv[msg.conversation_id].push(final)
   }
 
-  // 4. Build contacts map
+  // 4. Build contacts map (conversas de grupo não têm contact_id)
   const contactsMap: Record<string, ChatContact> = {}
   for (const conv of conversations) {
-    if (conv.chat_contacts) {
+    if (conv.chat_contacts && conv.contact_id) {
       contactsMap[conv.contact_id] = conv.chat_contacts
     }
   }
@@ -153,7 +163,7 @@ export default async function MarketingInboxPage() {
   if (customerIds.length > 0) {
     const { data: customersRaw } = await supabaseAdmin
       .from("customers")
-      .select("id, razao_social, nome_fantasia, cnpj_cpf, comprador_nome, email_financeiro, cidade, estado")
+      .select("id, razao_social, nome_fantasia, cnpj_cpf, comprador_nome, email_financeiro, telefone, cidade, estado")
       .in("id", [...new Set(customerIds)])
 
     for (const c of customersRaw ?? []) {
@@ -279,6 +289,7 @@ export default async function MarketingInboxPage() {
         stages={(stagesRaw ?? []) as any}
         tags={(tagsRaw ?? []) as any}
         tagsByContact={tagsByContact}
+        segmentConfig={segmentConfig}
       />
     </div>
   )

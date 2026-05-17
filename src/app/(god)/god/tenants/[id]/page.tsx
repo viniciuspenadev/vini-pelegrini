@@ -4,6 +4,8 @@ import { ChevronLeft, ChevronRight, Users, ShoppingCart, Package } from "lucide-
 import Link from "next/link"
 import { GodModuleManager } from "@/components/god/god-module-manager"
 import { GodTenantActions } from "@/components/god/god-tenant-actions"
+import { listSegments } from "@/lib/segments/registry"
+import { ALL_MODULES } from "@/lib/modules-catalog"
 
 const STATUS_COLORS: Record<string, string> = {
   trial:     "bg-amber-100 text-amber-700",
@@ -19,23 +21,6 @@ const STATUS_LABELS: Record<string, string> = {
 const DATE = (d: string) =>
   new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })
 
-export const ALL_MODULES = [
-  { key: "core.crm",              label: "CRM de Clientes",        group: "Core" },
-  { key: "core.usuarios",         label: "Gestão de Usuários",     group: "Core" },
-  { key: "core.dashboard",        label: "Dashboard & Relatórios", group: "Core" },
-  { key: "pescados.pedidos",      label: "Pedidos",                group: "Pescados" },
-  { key: "pescados.produtos",     label: "Produtos",               group: "Pescados" },
-  { key: "pescados.separacao",    label: "Separação Física",       group: "Pescados" },
-  { key: "pescados.rotas",        label: "Rotas de Entrega",       group: "Pescados" },
-  { key: "moveis.projetos",       label: "Projetos",               group: "Móveis" },
-  { key: "moveis.produtos",       label: "Produtos",               group: "Móveis" },
-  { key: "moveis.orcamentos",     label: "Orçamentos",             group: "Móveis" },
-  { key: "moveis.instalacoes",    label: "Instalações",            group: "Móveis" },
-  { key: "fiscal.nfe",            label: "Emissão de NF-e",        group: "Fiscal" },
-  { key: "fiscal.config",         label: "Config. Tributária",     group: "Fiscal" },
-  { key: "financeiro.receber",    label: "Contas a Receber",       group: "Financeiro" },
-  { key: "financeiro.pagamentos", label: "Pagamentos",             group: "Financeiro" },
-]
 
 interface Props { params: Promise<{ id: string }> }
 
@@ -134,7 +119,12 @@ export default async function GodTenantDetailPage({ params }: Props) {
               ))}
             </div>
 
-            <GodModuleManager tenantId={id} allModules={ALL_MODULES} moduleStatuses={moduleStatuses} />
+            <GodModuleManager
+              tenantId={id}
+              allModules={ALL_MODULES as any}
+              moduleStatuses={moduleStatuses}
+              currentSegment={t.segment ?? "pescados"}
+            />
 
             <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
               <div className="px-5 py-3.5 border-b border-slate-100">
@@ -185,6 +175,10 @@ export default async function GodTenantDetailPage({ params }: Props) {
                   <p className="text-sm font-mono font-medium text-slate-900">{t.slug}</p>
                 </div>
                 <div>
+                  <p className="text-xs text-slate-400 mb-0.5">Segmento</p>
+                  <p className="text-sm font-medium text-slate-900 capitalize">{t.segment ?? "—"}</p>
+                </div>
+                <div>
                   <p className="text-xs text-slate-400 mb-0.5">Plano atual</p>
                   <p className="text-sm font-medium text-slate-900">{t.plan}</p>
                 </div>
@@ -206,6 +200,8 @@ export default async function GodTenantDetailPage({ params }: Props) {
               currentStatus={t.status}
               plans={plans ?? []}
               currentPlanId={t.plan_id}
+              segments={listSegments()}
+              currentSegment={t.segment ?? "pescados"}
             />
           </div>
         </div>

@@ -581,6 +581,7 @@ export async function createManualConversation(input: {
           push_name:    input.pushName ?? null,
           customer_id:  customerLink,
           tags:         [],
+          source:       "whatsapp_outbound",
         })
         .select("id")
         .single()
@@ -892,6 +893,291 @@ export async function getUnreadTotal() {
   }
 
   return visible.reduce((s: number, c: any) => s + (c.unread_count ?? 0), 0)
+}
+
+// ── Configuração de marketing por tenant ────────────────────
+
+export async function getMarketingConfig() {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+
+  const { data } = await supabaseAdmin
+    .from("tenant_marketing_config")
+    .select("inactivity_days, default_pipeline_id, auto_create_lead_from_whatsapp")
+    .eq("tenant_id", session.user.tenantId)
+    .maybeSingle()
+
+  return data ?? { inactivity_days: 60, default_pipeline_id: null, auto_create_lead_from_whatsapp: false }
+}
+
+export async function updateInactivityDays(days: number) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+  if (!["owner", "admin"].includes(session.user.role)) throw new Error("Sem permissão")
+
+  const safe = Math.max(7, Math.min(365, Math.round(days)))
+
+  await supabaseAdmin
+    .from("tenant_marketing_config")
+    .upsert({
+      tenant_id:       session.user.tenantId,
+      inactivity_days: safe,
+      updated_at:      new Date().toISOString(),
+    }, { onConflict: "tenant_id" })
+
+  revalidatePath("/marketing/configuracao")
+  return { ok: true, value: safe }
+}
+
+// ── Lifecycle do contato ────────────────────────────────────
+
+/**
+ * Promove um contato de "contact" para "lead" e (opcionalmente) cria deal no funil.
+ * O atendente clica "Qualificar" quando avalia que há FIT comercial.
+ */
+export async function qualifyLead(conversationId: string, pipelineId?: string) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+  const tenantId = session.user.tenantId
+
+  const { data: conv } = await supabaseAdmin
+    .from("chat_conversations")
+    .select("id, contact_id, pipeline_id, is_group")
+    .eq("id", conversationId)
+    .eq("tenant_id", tenantId)
+    .single()
+
+  if (!conv) throw new Error("Conversa não encontrada")
+  if (conv.is_group) throw new Error("Conversas de grupo não vão para o funil")
+  if (!conv.contact_id) throw new Error("Conversa sem contato vinculado")
+
+  // 1. Marca contato como lead
+  await supabaseAdmin
+    .from("chat_contacts")
+    .update({
+      lifecycle_stage:      "lead",
+      lifecycle_changed_at: new Date().toISOString(),
+      qualified_at:         new Date().toISOString(),
+      qualified_by:         session.user.id,
+      unfit_reason:         null,
+      updated_at:           new Date().toISOString(),
+    })
+    .eq("id", conv.contact_id)
+    .eq("tenant_id", tenantId)
+
+  // 2. Move a conversa para o primeiro estágio NÃO-triagem do funil (qualificado)
+  const targetPipelineId = pipelineId ?? conv.pipeline_id
+  if (targetPipelineId) {
+    const { data: firstStage } = await supabaseAdmin
+      .from("pipeline_stages")
+      .select("id")
+      .eq("tenant_id", tenantId)
+      .eq("pipeline_id", targetPipelineId)
+      .eq("is_triage", false)
+      .eq("is_won", false)
+      .eq("is_lost", false)
+      .order("position", { ascending: true })
+      .limit(1)
+      .maybeSingle()
+
+    if (firstStage) {
+      await supabaseAdmin
+        .from("chat_conversations")
+        .update({
+          pipeline_id:   targetPipelineId,
+          stage_id:      firstStage.id,
+          card_position: 0,
+          updated_at:    new Date().toISOString(),
+        })
+        .eq("id", conversationId)
+    }
+  }
+
+  // 3. Mensagem-sistema
+  await supabaseAdmin.from("chat_messages").insert({
+    conversation_id: conversationId,
+    tenant_id:       tenantId,
+    sender_type:     "system",
+    content_type:    "text",
+    content:         "✅ Contato qualificado como Lead.",
+    status:          "delivered",
+    is_private_note: false,
+  })
+
+  revalidatePath("/marketing")
+  revalidatePath("/marketing/pipeline")
+  return { ok: true }
+}
+
+/**
+ * Desqualifica um contato (não tem fit comercial). Mantém a conversa no Inbox
+ * mas remove do funil ativo.
+ */
+export async function markUnfit(conversationId: string, reason?: string) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+  const tenantId = session.user.tenantId
+
+  const { data: conv } = await supabaseAdmin
+    .from("chat_conversations")
+    .select("contact_id")
+    .eq("id", conversationId)
+    .eq("tenant_id", tenantId)
+    .single()
+
+  if (!conv?.contact_id) throw new Error("Conversa sem contato")
+
+  await supabaseAdmin
+    .from("chat_contacts")
+    .update({
+      lifecycle_stage:      "unfit",
+      lifecycle_changed_at: new Date().toISOString(),
+      unfit_reason:         reason ?? null,
+      updated_at:           new Date().toISOString(),
+    })
+    .eq("id", conv.contact_id)
+
+  // Tira a conversa do funil (mantém aberta no inbox)
+  await supabaseAdmin
+    .from("chat_conversations")
+    .update({
+      pipeline_id:   null,
+      stage_id:      null,
+      card_position: 0,
+      updated_at:    new Date().toISOString(),
+    })
+    .eq("id", conversationId)
+
+  await supabaseAdmin.from("chat_messages").insert({
+    conversation_id: conversationId,
+    tenant_id:       tenantId,
+    sender_type:     "system",
+    content_type:    "text",
+    content:         reason
+      ? `🚫 Contato marcado como Sem Fit. Motivo: ${reason}`
+      : "🚫 Contato marcado como Sem Fit.",
+    status:          "delivered",
+    is_private_note: false,
+  })
+
+  revalidatePath("/marketing")
+  revalidatePath("/marketing/pipeline")
+  return { ok: true }
+}
+
+/**
+ * Inicia um novo deal para um cliente existente (cross-sell / nova oportunidade).
+ * Sai do estado "active_customer", entra em "lead" com novo card no funil.
+ */
+export async function startNewDealForCustomer(conversationId: string, pipelineId?: string) {
+  return qualifyLead(conversationId, pipelineId)
+}
+
+// ── Grupos WhatsApp (opt-in) ────────────────────────────────
+
+export async function listPendingGroups() {
+  const session = await auth()
+  if (!session) return []
+
+  const { data } = await supabaseAdmin
+    .from("chat_groups_whitelist")
+    .select("id, group_jid, group_name, member_count, detected_at")
+    .eq("tenant_id", session.user.tenantId)
+    .eq("status", "pending")
+    .order("detected_at", { ascending: false })
+
+  return data ?? []
+}
+
+export async function decideGroup(
+  groupWhitelistId: string,
+  decision:         "monitor" | "ignore",
+  mainCustomerId?:  string | null,
+) {
+  const session = await auth()
+  if (!session) throw new Error("Não autenticado")
+
+  const tenantId = session.user.tenantId
+
+  const { data: whitelist } = await supabaseAdmin
+    .from("chat_groups_whitelist")
+    .select("id, group_jid, instance_id")
+    .eq("id", groupWhitelistId)
+    .eq("tenant_id", tenantId)
+    .single()
+
+  await supabaseAdmin
+    .from("chat_groups_whitelist")
+    .update({
+      status:           decision,
+      decided_by:       session.user.id,
+      decided_at:       new Date().toISOString(),
+      main_customer_id: mainCustomerId ?? null,
+    })
+    .eq("id", groupWhitelistId)
+    .eq("tenant_id", tenantId)
+
+  // Se aprovou pra monitorar, puxa metadata do grupo (nome, foto, membros)
+  if (decision === "monitor" && whitelist) {
+    await fetchAndSaveGroupMetadata(whitelist.instance_id, whitelist.group_jid, tenantId)
+  }
+
+  revalidatePath("/marketing")
+  return { ok: true }
+}
+
+/**
+ * Busca metadata do grupo via Evolution e atualiza:
+ *   - chat_groups_whitelist (nome, foto, contagem)
+ *   - chat_conversations (group_name, group_picture, group_members)
+ */
+async function fetchAndSaveGroupMetadata(instanceId: string, groupJid: string, tenantId: string) {
+  try {
+    const { data: inst } = await supabaseAdmin
+      .from("whatsapp_instances")
+      .select("evolution_url, evolution_key, instance_name")
+      .eq("id", instanceId)
+      .single()
+    if (!inst) return
+
+    const { fetchGroupMetadata } = await import("@/lib/evolution-api")
+    const meta = await fetchGroupMetadata(
+      {
+        url:          inst.evolution_url,
+        apiKey:       inst.evolution_key,
+        instanceName: inst.instance_name,
+      },
+      groupJid,
+    )
+    if (!meta) return
+
+    const members = (meta.participants ?? []).map((p) => ({ jid: p.id }))
+    const now     = new Date().toISOString()
+
+    await supabaseAdmin
+      .from("chat_groups_whitelist")
+      .update({
+        group_name:    meta.subject ?? null,
+        group_picture: meta.pictureUrl ?? null,
+        member_count:  meta.size ?? members.length,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("group_jid", groupJid)
+
+    await supabaseAdmin
+      .from("chat_conversations")
+      .update({
+        group_name:    meta.subject ?? null,
+        group_picture: meta.pictureUrl ?? null,
+        group_members: members,
+        updated_at:    now,
+      })
+      .eq("tenant_id", tenantId)
+      .eq("group_jid", groupJid)
+      .eq("is_group", true)
+  } catch {
+    /* silencioso — metadata pode falhar se grupo é privado, etc */
+  }
 }
 
 // ── Quick Replies ───────────────────────────────────────────

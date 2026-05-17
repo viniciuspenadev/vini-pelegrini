@@ -12,6 +12,7 @@ export interface StageTemplate {
   probability_pct: number
   is_won?:         boolean
   is_lost?:        boolean
+  is_triage?:      boolean
 }
 
 export interface PipelineTemplate {
@@ -42,8 +43,9 @@ const PESCADOS: PipelineTemplate = {
   description: "Funil para distribuição B2B de pescados",
   color:       "#0891B2",
   stages: [
-    { name: "Cotação solicitada",   color: "#94A3B8", probability_pct: 10  },
-    { name: "Amostra enviada",      color: "#3B82F6", probability_pct: 30  },
+    { name: "Triagem",              color: "#94A3B8", probability_pct: 0,   is_triage: true },
+    { name: "Cotação solicitada",   color: "#3B82F6", probability_pct: 15  },
+    { name: "Amostra enviada",      color: "#06B6D4", probability_pct: 30  },
     { name: "Proposta",             color: "#8B5CF6", probability_pct: 50  },
     { name: "Negociação preço",     color: "#F59E0B", probability_pct: 70  },
     { name: "1º pedido confirmado", color: "#10B981", probability_pct: 100, is_won: true  },
@@ -52,19 +54,25 @@ const PESCADOS: PipelineTemplate = {
 }
 
 // ── Móveis planejados ───────────────────────────────────────────
+// Funil real do mercado: 12 estágios, do primeiro contato à instalação.
+// Pode ser editado/customizado depois pelo tenant em /marketing/pipeline/configuracao.
 const MOVEIS: PipelineTemplate = {
-  name:        "Vendas Móveis",
-  description: "Funil para móveis planejados / sob medida",
+  name:        "Vendas Móveis Planejados",
+  description: "Funil completo — da captação à instalação final",
   color:       "#92400E",
   stages: [
-    { name: "Interesse",            color: "#94A3B8", probability_pct: 10  },
-    { name: "Visita ao showroom",   color: "#3B82F6", probability_pct: 25  },
-    { name: "Projeto / Layout",     color: "#06B6D4", probability_pct: 40  },
-    { name: "Orçamento aprovado",   color: "#8B5CF6", probability_pct: 60  },
-    { name: "Pagamento entrada",    color: "#F59E0B", probability_pct: 80  },
-    { name: "Em produção",          color: "#84CC16", probability_pct: 95  },
-    { name: "Entregue",             color: "#10B981", probability_pct: 100, is_won: true  },
-    { name: "Perdido",              color: "#EF4444", probability_pct: 0,   is_lost: true },
+    { name: "Triagem",               color: "#94A3B8", probability_pct: 0,   is_triage: true },
+    { name: "Showroom agendado",     color: "#3B82F6", probability_pct: 15 },
+    { name: "Pós-visita",            color: "#06B6D4", probability_pct: 25 },
+    { name: "Em medição",            color: "#0EA5E9", probability_pct: 35 },
+    { name: "3D em desenvolvimento", color: "#8B5CF6", probability_pct: 45 },
+    { name: "3D aprovado",           color: "#A855F7", probability_pct: 60 },
+    { name: "Contrato assinado",     color: "#F59E0B", probability_pct: 75 },
+    { name: "Sinal pago",            color: "#EAB308", probability_pct: 85 },
+    { name: "Em produção",           color: "#84CC16", probability_pct: 95 },
+    { name: "Pronto p/ entrega",     color: "#22C55E", probability_pct: 98 },
+    { name: "Instalado",             color: "#10B981", probability_pct: 100, is_won: true  },
+    { name: "Perdido",               color: "#EF4444", probability_pct: 0,   is_lost: true },
   ],
 }
 

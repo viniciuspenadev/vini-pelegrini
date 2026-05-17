@@ -10,18 +10,39 @@ import {
   createQuickReply,
   deleteQuickReply,
   checkConnectionStatus,
+  updateInactivityDays,
 } from "@/lib/actions/chat"
+import { createTag, updateTag, deleteTag } from "@/lib/actions/tags"
 import {
   Wifi, WifiOff, Globe, Key, Server,
   Save, Loader2, Trash2, Plus, Zap, Link2, MessageSquare,
   Heart, AlertCircle, RefreshCw, CheckCircle2,
+  Tag as TagIcon, Settings2, Clock,
 } from "lucide-react"
 import type { WhatsAppInstance, ChatQuickReply } from "@/types/chat"
 
-interface Props {
-  instance:     WhatsAppInstance | null
-  quickReplies: ChatQuickReply[]
+interface TagRow {
+  id:          string
+  name:        string
+  color:       string
+  description: string | null
 }
+
+interface Props {
+  instance:       WhatsAppInstance | null
+  quickReplies:   ChatQuickReply[]
+  inactivityDays: number
+  tags:           TagRow[]
+}
+
+type TabKey = "whatsapp" | "tags" | "quick_replies" | "general"
+
+const TABS: Array<{ key: TabKey; label: string; icon: typeof Server }> = [
+  { key: "whatsapp",      label: "WhatsApp",         icon: Server },
+  { key: "tags",          label: "Tags",             icon: TagIcon },
+  { key: "quick_replies", label: "Respostas rápidas", icon: MessageSquare },
+  { key: "general",       label: "Geral",            icon: Settings2 },
+]
 
 function formatRelative(iso: string | null): string {
   if (!iso) return "nunca"
@@ -140,8 +161,9 @@ function HealthCard({ instance }: { instance: WhatsAppInstance }) {
   )
 }
 
-export function ConfigPageClient({ instance, quickReplies: initialReplies }: Props) {
+export function ConfigPageClient({ instance, quickReplies: initialReplies, inactivityDays, tags: initialTags }: Props) {
   const [isPending, startTransition] = useTransition()
+  const [activeTab, setActiveTab]    = useState<TabKey>("whatsapp")
 
   // Form state
   const [evolutionUrl, setUrl]       = useState(instance?.evolution_url ?? "")
@@ -156,6 +178,63 @@ export function ConfigPageClient({ instance, quickReplies: initialReplies }: Pro
   const [newShortcut, setNewShortcut] = useState("")
   const [newTitle, setNewTitle]       = useState("")
   const [newContent, setNewContent]   = useState("")
+
+  // Tags
+  const [tags, setTags]               = useState<TagRow[]>(initialTags)
+  const [newTagName, setNewTagName]   = useState("")
+  const [newTagColor, setNewTagColor] = useState("#3b82f6")
+  const [newTagDesc, setNewTagDesc]   = useState("")
+  const [editingTagId, setEditingTagId] = useState<string | null>(null)
+  const [editTagName, setEditTagName]   = useState("")
+  const [editTagColor, setEditTagColor] = useState("#3b82f6")
+
+  // Geral (lifecycle)
+  const [inactivity, setInactivity]   = useState(inactivityDays)
+  const [inactSaved, setInactSaved]   = useState(false)
+
+  function handleAddTag() {
+    if (!newTagName.trim()) return
+    startTransition(async () => {
+      try {
+        const created = await createTag(newTagName.trim(), newTagColor, newTagDesc.trim() || undefined)
+        if (created) {
+          setTags((prev) => [...prev, { id: created.id, name: newTagName.trim(), color: newTagColor, description: newTagDesc.trim() || null }])
+        }
+        setNewTagName(""); setNewTagColor("#3b82f6"); setNewTagDesc("")
+      } catch (e) { alert((e as Error).message) }
+    })
+  }
+
+  function handleSaveEditTag(id: string) {
+    startTransition(async () => {
+      try {
+        await updateTag(id, { name: editTagName.trim(), color: editTagColor })
+        setTags((prev) => prev.map((t) => t.id === id ? { ...t, name: editTagName.trim(), color: editTagColor } : t))
+        setEditingTagId(null)
+      } catch (e) { alert((e as Error).message) }
+    })
+  }
+
+  function handleDeleteTag(id: string) {
+    if (!confirm("Excluir esta tag? Todos os contatos perderão essa marcação.")) return
+    startTransition(async () => {
+      try {
+        await deleteTag(id)
+        setTags((prev) => prev.filter((t) => t.id !== id))
+      } catch (e) { alert((e as Error).message) }
+    })
+  }
+
+  function handleSaveInactivity() {
+    startTransition(async () => {
+      try {
+        const r = await updateInactivityDays(inactivity)
+        setInactivity(r.value)
+        setInactSaved(true)
+        setTimeout(() => setInactSaved(false), 2000)
+      } catch (e) { alert((e as Error).message) }
+    })
+  }
 
   function handleSaveConfig() {
     if (!evolutionUrl || !evolutionKey || !instanceName) {
@@ -225,6 +304,211 @@ export function ConfigPageClient({ instance, quickReplies: initialReplies }: Pro
 
   return (
     <div className="max-w-3xl space-y-6">
+      {/* ── Tabs ── */}
+      <div className="flex items-center gap-1 bg-white rounded-xl border border-slate-200 shadow-card p-1">
+        {TABS.map((t) => {
+          const Icon = t.icon
+          const active = activeTab === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setActiveTab(t.key)}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-lg transition-colors ${
+                active
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
+            >
+              <Icon className="size-3.5" />
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* ═══ Tab Geral ═══ */}
+      {activeTab === "general" && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
+            <Settings2 className="size-4 text-blue-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Configurações gerais</h2>
+          </div>
+          <div className="p-5 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                Dias sem pedido para virar cliente inativo
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={7}
+                  max={365}
+                  value={inactivity}
+                  onChange={(e) => setInactivity(parseInt(e.target.value) || 60)}
+                  className="w-28 px-3 py-2 text-sm border border-slate-200 rounded-lg bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+                <span className="text-xs text-slate-500">dias</span>
+                <button
+                  type="button"
+                  onClick={handleSaveInactivity}
+                  disabled={isPending}
+                  className="ml-auto flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+                >
+                  {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+                  {inactSaved ? "Salvo ✓" : "Salvar"}
+                </button>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Clientes (já ganhos) sem pedido por mais que X dias viram <strong>Inativos</strong> automaticamente
+                via cron diário. Mínimo 7, máximo 365.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Tab Tags ═══ */}
+      {activeTab === "tags" && (
+        <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+          <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
+            <TagIcon className="size-4 text-blue-600" />
+            <h2 className="text-sm font-semibold text-slate-900">Tags</h2>
+            <span className="text-[10px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full ml-auto">
+              {tags.length} cadastradas
+            </span>
+          </div>
+
+          <div className="p-5 space-y-4">
+            {/* Nova tag */}
+            <div className="grid grid-cols-[1fr_60px_2fr_auto] gap-2 items-end">
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Nome *</label>
+                <input
+                  type="text"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  placeholder="ex: VIP, Atacado, Urgente"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Cor</label>
+                <input
+                  type="color"
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
+                  className="w-full h-9 rounded-lg border border-slate-200 cursor-pointer"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">Descrição (opcional)</label>
+                <input
+                  type="text"
+                  value={newTagDesc}
+                  onChange={(e) => setNewTagDesc(e.target.value)}
+                  placeholder="Para que serve esta tag"
+                  className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-200"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={handleAddTag}
+                disabled={isPending || !newTagName.trim()}
+                className="h-9 px-4 flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg disabled:opacity-50"
+              >
+                <Plus className="size-3.5" /> Adicionar
+              </button>
+            </div>
+
+            {/* Lista de tags */}
+            {tags.length === 0 ? (
+              <div className="text-center py-8">
+                <TagIcon className="size-8 text-slate-200 mx-auto mb-2" />
+                <p className="text-xs text-slate-400">Nenhuma tag cadastrada ainda.</p>
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-lg overflow-hidden divide-y divide-slate-100">
+                {tags.map((tag) => (
+                  <div key={tag.id} className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50">
+                    {editingTagId === tag.id ? (
+                      <>
+                        <input
+                          type="color"
+                          value={editTagColor}
+                          onChange={(e) => setEditTagColor(e.target.value)}
+                          className="size-8 rounded border border-slate-200 cursor-pointer shrink-0"
+                        />
+                        <input
+                          type="text"
+                          value={editTagName}
+                          onChange={(e) => setEditTagName(e.target.value)}
+                          className="flex-1 px-2 py-1 text-xs bg-slate-50 border border-slate-200 rounded"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleSaveEditTag(tag.id)}
+                          disabled={isPending}
+                          className="text-[11px] font-semibold text-blue-600 hover:text-blue-700"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingTagId(null)}
+                          className="text-[11px] text-slate-400 hover:text-slate-600"
+                        >
+                          Cancelar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span
+                          className="text-[11px] font-semibold px-2.5 py-1 rounded-full shrink-0"
+                          style={{ backgroundColor: tag.color + "20", color: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                        {tag.description && (
+                          <p className="text-[11px] text-slate-500 truncate flex-1">{tag.description}</p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTagId(tag.id)
+                            setEditTagName(tag.name)
+                            setEditTagColor(tag.color)
+                          }}
+                          className="ml-auto text-[11px] font-semibold text-slate-500 hover:text-blue-600"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTag(tag.id)}
+                          className="size-7 flex items-center justify-center rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[11px] text-slate-400">
+              Tags marcam contatos e podem ser usadas como filtro no inbox, kanban e relatórios.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Tab WhatsApp ═══ */}
+      {activeTab === "whatsapp" && (
+        <>
+
       {/* ── Conexão Evolution API ── */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
@@ -377,7 +661,11 @@ export function ConfigPageClient({ instance, quickReplies: initialReplies }: Pro
         </div>
       )}
 
-      {/* ── Respostas Rápidas ── */}
+        </>
+      )}
+
+      {/* ═══ Tab Respostas Rápidas ═══ */}
+      {activeTab === "quick_replies" && (
       <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
         <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
           <MessageSquare className="size-4 text-blue-600" />
@@ -459,6 +747,7 @@ export function ConfigPageClient({ instance, quickReplies: initialReplies }: Pro
           )}
         </div>
       </div>
+      )}
     </div>
   )
 }

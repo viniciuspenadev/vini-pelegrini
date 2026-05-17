@@ -7,6 +7,8 @@ import {
   User, UserCheck, Phone, DollarSign, Calendar, Loader2,
 } from "lucide-react"
 import { moveConversation } from "@/lib/actions/pipeline"
+import { lifecycleMeta } from "@/lib/lifecycle"
+import { ChannelIcon } from "@/components/ui/channel-icon"
 
 interface Stage {
   id:              string
@@ -23,6 +25,8 @@ interface ChatContact {
   push_name:       string | null
   phone_number:    string
   profile_pic_url: string | null
+  source:          string | null
+  lifecycle_stage: string | null
   customers:       { id: string; razao_social: string; nome_fantasia: string | null } | null
 }
 
@@ -262,15 +266,22 @@ function ConversationCard({
           </div>
         )}
 
-        {/* Badges: cliente / lead + pedidos + LTV */}
+        {/* Badges: lifecycle + canal + pedidos */}
         <div className="flex items-center gap-1 flex-wrap">
-          {isClient ? (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
-              <UserCheck className="size-2.5" /> Cliente
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
-              <User className="size-2.5" /> Lead
+          {(() => {
+            const lc = lifecycleMeta(contact?.lifecycle_stage)
+            return (
+              <span
+                className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${lc.bg} ${lc.text}`}
+                title={lc.label}
+              >
+                {lc.icon} {lc.label}
+              </span>
+            )
+          })()}
+          {contact?.source && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white border border-slate-200">
+              <ChannelIcon source={contact.source} size={11} />
             </span>
           )}
 

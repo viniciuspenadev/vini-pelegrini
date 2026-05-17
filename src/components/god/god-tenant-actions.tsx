@@ -1,18 +1,21 @@
 "use client"
 
 import { useTransition } from "react"
-import { updateTenantStatus, updateTenantPlan } from "@/lib/actions/god"
-import { ShieldAlert, ShieldCheck, ShieldOff } from "lucide-react"
+import { updateTenantStatus, updateTenantPlan, updateTenantSegment } from "@/lib/actions/god"
+import { ShieldAlert, ShieldCheck, ShieldOff, Briefcase } from "lucide-react"
 
-interface Plan { id: string; name: string }
+interface Plan    { id: string; name: string }
+interface Segment { slug: string; label: string }
 interface Props {
-  tenantId:      string
-  currentStatus: string
-  plans:         Plan[]
-  currentPlanId: string | null
+  tenantId:        string
+  currentStatus:   string
+  plans:           Plan[]
+  currentPlanId:   string | null
+  segments:        Segment[]
+  currentSegment:  string
 }
 
-export function GodTenantActions({ tenantId, currentStatus, plans, currentPlanId }: Props) {
+export function GodTenantActions({ tenantId, currentStatus, plans, currentPlanId, segments, currentSegment }: Props) {
   const [pending, startTransition] = useTransition()
 
   function changeStatus(status: string) {
@@ -25,12 +28,39 @@ export function GodTenantActions({ tenantId, currentStatus, plans, currentPlanId
     startTransition(() => updateTenantPlan(tenantId, planId))
   }
 
+  function changeSegment(e: React.ChangeEvent<HTMLSelectElement>) {
+    const segment = e.target.value
+    if (!segment || segment === currentSegment) return
+    if (!confirm(`Trocar segmento de "${currentSegment}" para "${segment}"?\n\nIsso muda como o inbox e o cadastro de cliente se comportam para este tenant.`)) {
+      e.target.value = currentSegment
+      return
+    }
+    startTransition(() => updateTenantSegment(tenantId, segment))
+  }
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
       <div className="px-5 py-3.5 border-b border-slate-100">
         <p className="text-sm font-semibold text-slate-900">Ações</p>
       </div>
       <div className="p-5 space-y-4">
+
+        {/* Segmento */}
+        <div className="space-y-1.5">
+          <p className="text-xs text-slate-400 flex items-center gap-1.5">
+            <Briefcase className="size-3" /> Segmento
+          </p>
+          <select
+            value={currentSegment}
+            onChange={changeSegment}
+            disabled={pending}
+            className="w-full h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-50"
+          >
+            {segments.map((s) => (
+              <option key={s.slug} value={s.slug}>{s.label}</option>
+            ))}
+          </select>
+        </div>
 
         {/* Alterar plano */}
         <div className="space-y-1.5">

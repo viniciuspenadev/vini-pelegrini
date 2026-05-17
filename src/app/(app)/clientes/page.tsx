@@ -2,7 +2,7 @@ import { auth } from "@/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 import { LinkButton } from "@/components/ui/link-button"
 import { ClientesList } from "@/components/clientes-list"
-import { Plus, Users, UserCheck, UserX, ShieldAlert } from "lucide-react"
+import { Plus, Users, UserCheck, ShieldAlert } from "lucide-react"
 
 export default async function ClientesPage() {
   const session        = await auth()
@@ -12,7 +12,7 @@ export default async function ClientesPage() {
   let query = supabaseAdmin
     .from("customers")
     .select(`
-      id, razao_social, nome_fantasia, cnpj_cpf,
+      id, razao_social, nome_fantasia, cnpj_cpf, kind, metadata,
       cidade, estado, rota_entrega, forma_pagamento, status,
       profiles!customers_vendedor_id_fkey ( full_name, email )
     `)
@@ -24,8 +24,8 @@ export default async function ClientesPage() {
   const { data: raw } = await query
   const all = (raw ?? []) as any[]
 
-  const ativos    = all.filter((c) => c.status === "ativo").length
-  const inativos  = all.filter((c) => c.status === "inativo").length
+  const pjCount   = all.filter((c) => c.kind === "B2B").length
+  const pfCount   = all.filter((c) => c.kind === "B2C").length
   const bloqueados = all.filter((c) => c.status === "bloqueado").length
 
   const kpis = [
@@ -37,18 +37,18 @@ export default async function ClientesPage() {
       iconColor: "text-blue-600",
     },
     {
-      label:     "Ativos",
-      value:     ativos,
+      label:     "Pessoa Jurídica",
+      value:     pjCount,
+      icon:      UserCheck,
+      iconBg:    "bg-blue-50",
+      iconColor: "text-blue-600",
+    },
+    {
+      label:     "Pessoa Física",
+      value:     pfCount,
       icon:      UserCheck,
       iconBg:    "bg-green-50",
       iconColor: "text-green-600",
-    },
-    {
-      label:     "Inativos",
-      value:     inativos,
-      icon:      UserX,
-      iconBg:    "bg-slate-100",
-      iconColor: "text-slate-400",
     },
     {
       label:     "Bloqueados",
@@ -64,6 +64,8 @@ export default async function ClientesPage() {
     razao_social:    c.razao_social,
     nome_fantasia:   c.nome_fantasia,
     cnpj_cpf:        c.cnpj_cpf,
+    kind:            (c.kind ?? "B2B") as "B2B" | "B2C",
+    origem:          c.metadata?.origem ?? null,
     cidade:          c.cidade,
     estado:          c.estado,
     rota_entrega:    c.rota_entrega,

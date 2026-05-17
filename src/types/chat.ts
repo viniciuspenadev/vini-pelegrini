@@ -29,19 +29,42 @@ export interface WhatsAppInstance {
   updated_at:          string
 }
 
+export type LifecycleStage =
+  | "contact"
+  | "lead"
+  | "customer"
+  | "active_customer"
+  | "inactive_customer"
+  | "unfit"
+
+export type ContactSource =
+  | "whatsapp_inbound"
+  | "whatsapp_outbound"
+  | "manual"
+  | "import"
+  | "instagram"
+  | "webform"
+
 export interface ChatContact {
-  id:              string
-  tenant_id:       string
-  customer_id:     string | null
-  whatsapp_id:     string
-  phone_number:    string
-  push_name:       string | null
-  profile_pic_url: string | null
-  is_blocked:      boolean
-  tags:            string[]
-  notes:           string | null
-  created_at:      string
-  updated_at:      string
+  id:                   string
+  tenant_id:            string
+  customer_id:          string | null
+  whatsapp_id:          string
+  phone_number:         string
+  push_name:            string | null
+  profile_pic_url:      string | null
+  is_blocked:           boolean
+  tags:                 string[]
+  notes:                string | null
+  source:               ContactSource
+  lifecycle_stage:      LifecycleStage
+  lifecycle_changed_at: string | null
+  qualified_at:         string | null
+  qualified_by:         string | null
+  unfit_reason:         string | null
+  last_order_at:        string | null
+  created_at:           string
+  updated_at:           string
   // Joined
   customers?: {
     razao_social:  string
@@ -52,7 +75,7 @@ export interface ChatContact {
 export interface ChatConversation {
   id:                    string
   tenant_id:             string
-  contact_id:            string
+  contact_id:            string | null   // null em conversas de grupo
   instance_id:           string
   assigned_to:           string | null
   status:                ConversationStatus
@@ -74,6 +97,13 @@ export interface ChatConversation {
   won_at:                string | null
   lost_at:               string | null
   participants:          string[]
+  // Grupos WhatsApp
+  is_group:              boolean
+  group_jid:             string | null
+  group_name:            string | null
+  group_picture:         string | null
+  group_members:         Array<{ jid: string; name?: string }>
+
   created_at:            string
   updated_at:            string
   // Joined
@@ -98,6 +128,7 @@ export interface ChatMessage {
   status:          MessageDeliveryStatus
   is_private_note: boolean
   metadata:        Record<string, unknown>
+  group_participant_jid: string | null
   created_at:      string
   // Joined
   profiles?:       { full_name: string | null } | null

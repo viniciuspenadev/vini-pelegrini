@@ -28,6 +28,20 @@ export default async function MarketingConfigPage() {
     .eq("tenant_id", tenantId)
     .order("shortcut")
 
+  // Config de marketing (inactivity_days etc.)
+  const { data: marketingConfig } = await supabaseAdmin
+    .from("tenant_marketing_config")
+    .select("inactivity_days")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+
+  // Tags do tenant
+  const { data: tags } = await supabaseAdmin
+    .from("tags")
+    .select("id, name, color, description")
+    .eq("tenant_id", tenantId)
+    .order("name")
+
   return (
     <div className="min-h-full bg-blue-50">
       {/* Header */}
@@ -44,6 +58,8 @@ export default async function MarketingConfigPage() {
         <ConfigPageClient
           instance={instance}
           quickReplies={quickReplies ?? []}
+          inactivityDays={marketingConfig?.inactivity_days ?? 60}
+          tags={tags ?? []}
         />
       </div>
     </div>

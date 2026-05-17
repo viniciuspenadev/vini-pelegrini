@@ -10,15 +10,18 @@ import { LinkButton } from "@/components/ui/link-button"
 import {
   Building2, FileText, Phone, Mail, DollarSign,
   CreditCard, MapPin, User, Hash, Truck,
-  Clock, Receipt, AlertCircle, Settings2,
+  Clock, Receipt, AlertCircle, Settings2, Heart, Globe, Hammer, Briefcase,
 } from "lucide-react"
 import type { Customer } from "@/types/database"
+import { labelsForKind, sectionsForKind, LEAD_ORIGINS } from "@/lib/customer-kinds"
+import type { CustomerKind } from "@/lib/customer-kinds"
 
 interface Vendedor { id: string; full_name: string | null; email: string }
 interface Props {
   customer?:      Customer
   vendedores?:    Vendedor[]
   canEditStatus?: boolean
+  kind?:          CustomerKind   // default 'B2B' pra compat
 }
 
 const ESTADOS = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
@@ -83,8 +86,16 @@ function CheckboxField({
   )
 }
 
-export function CustomerForm({ customer, vendedores, canEditStatus = false }: Props) {
+export function CustomerForm({ customer, vendedores, canEditStatus = false, kind: kindProp }: Props) {
   const [pending, startTransition] = useTransition()
+
+  // Resolve o kind: se está editando, usa do customer; se está criando, usa prop
+  const kind: CustomerKind = (customer?.kind as CustomerKind) ?? kindProp ?? "B2B"
+  const labels   = labelsForKind(kind)
+  const sections = sectionsForKind(kind)
+
+  const customerMeta = (customer?.metadata ?? {}) as Record<string, any>
+
   const [isentoIE, setIsentoIE]           = useState(customer?.isento_ie ?? false)
   const [contribuinte, setContribuinte]   = useState(customer?.contribuinte_icms ?? false)
 
@@ -116,73 +127,88 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
 
+      {/* Campo hidden: kind */}
+      <input type="hidden" name="kind" value={kind} />
+
       {/* ── 1. Identificação ── */}
       <Section
-        title="Identificação"
-        icon={<Building2 />}
-        hint="Dados cadastrais e regime tributário"
+        title={labels.identificationTitle}
+        icon={kind === "B2C" ? <User /> : <Building2 />}
+        hint={labels.identificationHint}
         className="lg:col-span-12"
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <InputField
-            label="Razão Social" name="razao_social" required
+            label={labels.primaryNameLabel} name="razao_social" required
             defaultValue={customer?.razao_social}
-            leadingIcon={<Building2 />}
-            placeholder="Empresa Ltda."
+            leadingIcon={kind === "B2C" ? <User /> : <Building2 />}
+            placeholder={kind === "B2C" ? "João da Silva" : "Empresa Ltda."}
           />
           <InputField
-            label="Nome Fantasia" name="nome_fantasia"
+            label={labels.secondaryNameLabel} name="nome_fantasia"
             defaultValue={customer?.nome_fantasia ?? ""}
-            placeholder="Como é conhecida no mercado"
+            placeholder={kind === "B2C" ? "Apelido (opcional)" : "Como é conhecida no mercado"}
           />
           <MaskedInput
-            mask="cnpj-cpf"
-            label="CNPJ / CPF" name="cnpj_cpf" required
+            mask={labels.documentMask}
+            label={labels.documentLabel} name="cnpj_cpf" required
             defaultValue={customer?.cnpj_cpf ?? ""}
             leadingIcon={<Hash />}
-            placeholder="00.000.000/0001-00"
+            placeholder={kind === "B2C" ? "000.000.000-00" : "00.000.000/0001-00"}
           />
-          <div className="space-y-1.5">
-            <Label className="text-slate-700">Inscrição Estadual</Label>
+          {sections.showFiscal && (
+            <div className="space-y-1.5">
+              <Label className="text-slate-700">Inscrição Estadual</Label>
+              <InputField
+                name="inscricao_estadual"
+                defaultValue={customer?.inscricao_estadual ?? ""}
+                disabled={isentoIE}
+                leadingIcon={<FileText />}
+                placeholder="000.000.000.000"
+              />
+              <CheckboxField
+                name="isento_ie"
+                label="Isento de IE"
+                checked={isentoIE}
+                onChange={setIsentoIE}
+              />
+            </div>
+          )}
+          {sections.showProfession && (
             <InputField
-              name="inscricao_estadual"
-              defaultValue={customer?.inscricao_estadual ?? ""}
-              disabled={isentoIE}
-              leadingIcon={<FileText />}
-              placeholder="000.000.000.000"
+              label="Profissão" name="meta_profissao"
+              defaultValue={customerMeta.profissao ?? ""}
+              leadingIcon={<Briefcase />}
+              placeholder="Ex: Engenheiro, Médico, Empresário..."
             />
-            <CheckboxField
-              name="isento_ie"
-              label="Isento de IE"
-              checked={isentoIE}
-              onChange={setIsentoIE}
-            />
-          </div>
+          )}
         </div>
 
-        {/* Regime tributário */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-2 border-t border-slate-100">
-          <div className="space-y-1.5">
-            <Label className="text-slate-700">Regime Tributário</Label>
-            <select
-              name="regime_tributario"
-              defaultValue={customer?.regime_tributario ?? ""}
-              className={inputBase}
-            >
-              <option value="">— Não informado —</option>
-              {REGIMES.map((r) => <option key={r} value={r}>{r}</option>)}
-            </select>
+        {/* Regime tributário — só PJ */}
+        {sections.showFiscal && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 pt-2 border-t border-slate-100">
+            <div className="space-y-1.5">
+              <Label className="text-slate-700">Regime Tributário</Label>
+              <select
+                name="regime_tributario"
+                defaultValue={customer?.regime_tributario ?? ""}
+                className={inputBase}
+              >
+                <option value="">— Não informado —</option>
+                {REGIMES.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div className="space-y-2 flex flex-col justify-end pb-1">
+              <CheckboxField
+                name="contribuinte_icms"
+                label="Contribuinte de ICMS"
+                checked={contribuinte}
+                onChange={setContribuinte}
+                hint="Marque se o cliente é contribuinte (tem IE ativa)"
+              />
+            </div>
           </div>
-          <div className="space-y-2 flex flex-col justify-end pb-1">
-            <CheckboxField
-              name="contribuinte_icms"
-              label="Contribuinte de ICMS"
-              checked={contribuinte}
-              onChange={setContribuinte}
-              hint="Marque se o cliente é contribuinte (tem IE ativa)"
-            />
-          </div>
-        </div>
+        )}
       </Section>
 
       {/* ── 2. Endereço ── */}
@@ -269,7 +295,8 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
         </div>
       </Section>
 
-      {/* ── 3. Entrega & Logística ── */}
+      {/* ── 3. Entrega & Logística ── (só B2B) */}
+      {sections.showLogistics && (
       <Section
         title="Entrega & Logística"
         icon={<Truck />}
@@ -301,13 +328,14 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
           />
         </div>
       </Section>
+      )}
 
       {/* ── 4. Contatos ── */}
       <Section
-        title="Contatos"
+        title={labels.contactSectionTitle}
         icon={<Phone />}
-        hint="Telefones e e-mails da empresa e do responsável pela compra"
-        className="lg:col-span-6"
+        hint={kind === "B2C" ? "Telefones, e-mail e responsável co-titular (se aplicável)" : "Telefones e e-mails da empresa e do responsável pela compra"}
+        className={sections.showLogistics ? "lg:col-span-6" : "lg:col-span-12"}
       >
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <MaskedInput
@@ -318,39 +346,97 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false }: Pr
             placeholder="(11) 3333-4444"
           />
           <InputField
-            label="Comprador / Responsável" name="comprador_nome"
-            defaultValue={customer?.comprador_nome ?? ""}
+            label={labels.buyerLabel} name="comprador_nome"
+            defaultValue={customer?.comprador_nome ?? customerMeta.co_titular_nome ?? ""}
             leadingIcon={<User />}
-            placeholder="Nome do contato"
+            placeholder={kind === "B2C" ? "Nome do cônjuge (opcional)" : "Nome do contato"}
           />
           <MaskedInput
             mask="phone"
-            label="WhatsApp do Comprador" name="comprador_whatsapp"
+            label={kind === "B2C" ? "WhatsApp" : "WhatsApp do Comprador"}
+            name="comprador_whatsapp"
             defaultValue={customer?.comprador_whatsapp ?? ""}
             leadingIcon={<Phone />}
             placeholder="(11) 99999-9999"
           />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 pt-2 border-t border-slate-100">
+        <div className={`grid grid-cols-1 gap-4 ${sections.showFiscal ? "sm:grid-cols-2" : ""} pt-2 border-t border-slate-100`}>
           <InputField
-            label="E-mail Financeiro" name="email_financeiro" type="email"
+            label={kind === "B2C" ? "E-mail" : "E-mail Financeiro"}
+            name="email_financeiro" type="email"
             defaultValue={customer?.email_financeiro ?? ""}
             leadingIcon={<Mail />}
-            placeholder="financeiro@empresa.com"
+            placeholder={kind === "B2C" ? "cliente@email.com" : "financeiro@empresa.com"}
           />
-          <div className="space-y-1.5">
-            <InputField
-              label="E-mail para NF-e" name="email_nfe" type="email"
-              defaultValue={customer?.email_nfe ?? ""}
-              leadingIcon={<Receipt />}
-              placeholder="nfe@empresa.com"
-            />
-            <p className="text-[11px] text-slate-400">
-              Se diferente do e-mail financeiro, a NF-e será enviada para este endereço.
-            </p>
-          </div>
+          {sections.showFiscal && (
+            <div className="space-y-1.5">
+              <InputField
+                label="E-mail para NF-e" name="email_nfe" type="email"
+                defaultValue={customer?.email_nfe ?? ""}
+                leadingIcon={<Receipt />}
+                placeholder="nfe@empresa.com"
+              />
+              <p className="text-[11px] text-slate-400">
+                Se diferente do e-mail financeiro, a NF-e será enviada para este endereço.
+              </p>
+            </div>
+          )}
         </div>
       </Section>
+
+      {/* ── Origem do Lead + Endereço da Obra + Designer (B2C/móveis) ── */}
+      {(sections.showLeadOrigin || sections.showInstallSite || sections.showDesignerPartner) && (
+      <Section
+        title="Origem & Captação"
+        icon={<Heart />}
+        hint="Por onde o cliente chegou e dados específicos do projeto"
+        className="lg:col-span-12"
+      >
+        {sections.showLeadOrigin && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label className="text-slate-700">Origem do Lead</Label>
+              <select
+                name="meta_origem"
+                defaultValue={customerMeta.origem ?? ""}
+                className={inputBase}
+              >
+                <option value="">— Não informado —</option>
+                {LEAD_ORIGINS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-400">
+                Útil para entender quais canais trazem mais clientes.
+              </p>
+            </div>
+            {sections.showDesignerPartner && (
+              <InputField
+                label="Designer / Arquiteto parceiro" name="meta_designer_parceiro"
+                defaultValue={customerMeta.designer_parceiro ?? ""}
+                leadingIcon={<Hammer />}
+                placeholder="Nome do designer/arquiteto que indicou"
+              />
+            )}
+          </div>
+        )}
+
+        {sections.showInstallSite && (
+          <div className="pt-2 border-t border-slate-100">
+            <Label className="text-slate-700 mb-2 block">
+              Endereço da obra <span className="text-slate-400 font-normal">(se diferente do residencial)</span>
+            </Label>
+            <textarea
+              name="meta_endereco_obra"
+              defaultValue={customerMeta.endereco_obra ?? ""}
+              rows={2}
+              className={`${inputBase} h-auto resize-none py-2`}
+              placeholder="Ex: Rua A, 123 - Bairro B - Cidade C / SP - obra em construção"
+            />
+          </div>
+        )}
+      </Section>
+      )}
 
       {/* ── 5. Dados Comerciais ── */}
       <Section

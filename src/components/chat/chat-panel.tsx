@@ -1,12 +1,15 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState, useTransition } from "react"
 import { MessageBubble } from "./message-bubble"
 import { MessageInput } from "./message-input"
 import { formatPhoneDisplay } from "@/lib/evolution-api"
+import { lifecycleMeta } from "@/lib/lifecycle"
+import { ChannelIcon } from "@/components/ui/channel-icon"
+import { qualifyLead, markUnfit, startNewDealForCustomer } from "@/lib/actions/chat"
 import {
-  User, Phone, CheckCircle2, Clock, XCircle,
-  ChevronDown, UserPlus, MoreHorizontal,
+  User, Phone, CheckCircle2, Clock, XCircle, Target, Ban,
+  ChevronDown, UserPlus, MoreHorizontal, Users, Plus, Loader2,
 } from "lucide-react"
 import type { ChatMessage, ChatConversation, ChatQuickReply } from "@/types/chat"
 
@@ -30,12 +33,53 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
   const messagesEndRef     = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const prevConvIdRef      = useRef<string | null>(null)
+  const [isPending, startTransition] = useTransition()
+  const [showUnfitModal, setShowUnfitModal] = useState(false)
+  const [unfitReason, setUnfitReason]       = useState("")
 
   const contact = conversation.chat_contacts
   const name    = contact?.customers?.nome_fantasia ?? contact?.customers?.razao_social ?? contact?.push_name ?? formatPhoneDisplay(contact?.phone_number ?? "")
   const phone   = contact?.phone_number ? formatPhoneDisplay(contact.phone_number) : ""
 
   const currentStatus = STATUS_OPTIONS.find((s) => s.key === conversation.status) ?? STATUS_OPTIONS[0]
+
+  // Estado de lifecycle (puxado do contato)
+  const lifecycle = contact?.lifecycle_stage ?? "contact"
+  const lc        = lifecycleMeta(lifecycle)
+  const channelSource = contact?.source ?? null
+
+  // Quando mostrar botões:
+  //  - "Qualificar" → contato em triagem (lifecycle=contact) E conversa não é grupo
+  //  - "Sem fit"    → mesmo cenário
+  //  - "Novo deal"  → cliente ativo/cliente sem deal ativo
+  const showQualify = !conversation.is_group && lifecycle === "contact"
+  const showUnfit   = !conversation.is_group && (lifecycle === "contact" || lifecycle === "lead")
+  const showNewDeal = !conversation.is_group
+                   && ["customer", "active_customer", "inactive_customer"].includes(lifecycle)
+                   && !conversation.stage_id
+
+  function handleQualify() {
+    startTransition(async () => {
+      try { await qualifyLead(conversation.id) } catch (e) { alert((e as Error).message) }
+    })
+  }
+
+  function handleUnfitConfirm() {
+    const reason = unfitReason.trim() || undefined
+    startTransition(async () => {
+      try {
+        await markUnfit(conversation.id, reason)
+        setShowUnfitModal(false)
+        setUnfitReason("")
+      } catch (e) { alert((e as Error).message) }
+    })
+  }
+
+  function handleNewDeal() {
+    startTransition(async () => {
+      try { await startNewDealForCustomer(conversation.id) } catch (e) { alert((e as Error).message) }
+    })
+  }
 
   // Auto-scroll robusto: força scroll após cada imagem/áudio carregar
   useEffect(() => {
@@ -86,21 +130,64 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
       {/* Chat header */}
       <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-slate-200 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="size-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
-            <span className="text-sm font-bold text-white">
-              {(contact?.push_name ?? name)?.[0]?.toUpperCase() ?? "?"}
-            </span>
-          </div>
+          {conversation.is_group ? (
+            conversation.group_picture ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={conversation.group_picture}
+                alt=""
+                className="size-10 rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div className="size-10 rounded-full bg-amber-500 flex items-center justify-center shrink-0">
+                <Users className="size-5 text-white" />
+              </div>
+            )
+          ) : contact?.profile_pic_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={contact.profile_pic_url}
+              alt=""
+              className="size-10 rounded-full object-cover shrink-0"
+            />
+          ) : (
+            <div className="size-10 rounded-full bg-blue-600 flex items-center justify-center shrink-0">
+              <span className="text-sm font-bold text-white">
+                {(contact?.push_name ?? name)?.[0]?.toUpperCase() ?? "?"}
+              </span>
+            </div>
+          )}
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-slate-900 truncate">{name}</p>
-            <div className="flex items-center gap-2">
-              {phone && (
-                <span className="text-[11px] text-slate-400 font-mono">{phone}</span>
-              )}
-              {contact?.customers && (
-                <span className="text-[10px] bg-green-50 text-green-700 px-1.5 py-0.5 rounded font-medium">
-                  Cliente vinculado
+            <p className="text-sm font-semibold text-slate-900 truncate flex items-center gap-1.5">
+              {conversation.is_group && <Users className="size-3 text-amber-600 shrink-0" />}
+              {conversation.is_group
+                ? (conversation.group_name ?? "Grupo sem nome")
+                : name}
+            </p>
+            <div className="flex items-center gap-2 flex-wrap">
+              {conversation.is_group ? (
+                <span className="text-[11px] text-slate-400">
+                  {conversation.group_members?.length ?? 0} membros • grupo
                 </span>
+              ) : (
+                <>
+                  {phone && (
+                    <span className="text-[11px] text-slate-400 font-mono">{phone}</span>
+                  )}
+                  {/* Badge de lifecycle */}
+                  <span
+                    className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${lc.bg} ${lc.text}`}
+                    title={lc.label}
+                  >
+                    {lc.icon} {lc.label}
+                  </span>
+                  {/* Badge de canal */}
+                  {channelSource && (
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white border border-slate-200">
+                      <ChannelIcon source={channelSource} size={12} />
+                    </span>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -108,6 +195,44 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
 
         {/* Actions */}
         <div className="flex items-center gap-2 shrink-0">
+
+          {/* Lifecycle actions — só aparecem no contexto certo */}
+          {showQualify && (
+            <button
+              type="button"
+              onClick={handleQualify}
+              disabled={isPending}
+              title="Promover para Lead e adicionar ao funil"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Target className="size-3.5" />}
+              Qualificar
+            </button>
+          )}
+          {showUnfit && (
+            <button
+              type="button"
+              onClick={() => setShowUnfitModal(true)}
+              disabled={isPending}
+              title="Marcar como sem fit (sai do funil)"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 transition-colors disabled:opacity-50"
+            >
+              <Ban className="size-3.5" /> Sem fit
+            </button>
+          )}
+          {showNewDeal && (
+            <button
+              type="button"
+              onClick={handleNewDeal}
+              disabled={isPending}
+              title="Criar novo deal pra este cliente"
+              className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 transition-colors disabled:opacity-50"
+            >
+              {isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Plus className="size-3.5" />}
+              Novo deal
+            </button>
+          )}
+
           {/* Status */}
           <div className="relative group">
             <button
@@ -194,6 +319,15 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
               key={msg.id}
               message={msg}
               agentName={msg.sender_type === "agent" ? msg.profiles?.full_name : null}
+              senderLabel={
+                msg.sender_type !== "contact"
+                  ? null
+                  : conversation.is_group && msg.group_participant_jid
+                    // Em grupo: telefone do participante que mandou
+                    ? formatPhoneDisplay(msg.group_participant_jid.split("@")[0])
+                    // Em 1-1: nome do contato/cliente
+                    : name
+              }
             />
           ))
         )}
@@ -206,6 +340,48 @@ export function ChatPanel({ conversation, messages, quickReplies, agents, onStat
         quickReplies={quickReplies}
         disabled={conversation.status === "resolved"}
       />
+
+      {/* Modal — motivo de "Sem fit" */}
+      {showUnfitModal && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={() => setShowUnfitModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-bold text-slate-900 mb-2">Marcar como sem fit</h3>
+            <p className="text-xs text-slate-500 mb-3">
+              A conversa continua aberta no inbox, mas sai do funil. Opcionalmente diga o motivo.
+            </p>
+            <textarea
+              value={unfitReason}
+              onChange={(e) => setUnfitReason(e.target.value)}
+              placeholder="Ex: ticket muito baixo, fora da área de entrega, errou número..."
+              rows={3}
+              className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-200 resize-none"
+            />
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => setShowUnfitModal(false)}
+                className="flex-1 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={handleUnfitConfirm}
+                className="flex-1 py-2 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

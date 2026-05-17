@@ -1,5 +1,6 @@
 import { auth } from "@/auth"
 import { supabaseAdmin } from "@/lib/supabase"
+import { requireModule } from "@/lib/modules"
 import { StatusBadge } from "@/components/ui/status-badge"
 import { LinkButton } from "@/components/ui/link-button"
 import { RevenueChart } from "@/components/charts/revenue-chart"
@@ -44,6 +45,8 @@ function SectionHeader({ title, href, linkLabel = "Ver todos" }: {
 }
 
 export default async function DashboardPage() {
+  await requireModule("core.dashboard")
+
   const session        = await auth()
   const tenantId       = session!.user.tenantId
   const userId         = session!.user.id

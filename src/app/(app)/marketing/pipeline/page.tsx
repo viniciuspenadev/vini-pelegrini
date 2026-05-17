@@ -4,7 +4,7 @@ import { auth } from "@/auth"
 import { supabaseAdmin } from "@/lib/supabase"
 import { ensurePipelineBootstrap } from "@/lib/actions/pipeline"
 import { ConversationKanban } from "@/components/marketing/conversation-kanban"
-import { Workflow, ChevronRight, Settings } from "lucide-react"
+import { Workflow, ChevronRight, Settings, Plus } from "lucide-react"
 
 export default async function PipelinePage({
   searchParams,
@@ -58,7 +58,13 @@ export default async function PipelinePage({
   const isAdminOrOwner = ["owner", "admin"].includes(session.user.role)
   const canSeeAll      = isAdminOrOwner || (profile?.view_all_conversations ?? false)
 
-  // Busca conversas do pipeline
+  // Busca conversas do pipeline ATIVAS (não won, não lost, não triagem)
+  // O kanban principal só mostra deals em andamento. Triagem fica no Inbox;
+  // won/lost ficam em aba "Histórico" (futuro).
+  const activeStageIds = (stages ?? [])
+    .filter((s) => !s.is_won && !s.is_lost && !s.is_triage)
+    .map((s) => s.id)
+
   let convQuery = supabaseAdmin
     .from("chat_conversations")
     .select(`
@@ -69,13 +75,14 @@ export default async function PipelinePage({
       won_at, lost_at,
       assigned_to,
       chat_contacts (
-        id, push_name, phone_number, profile_pic_url,
+        id, push_name, phone_number, profile_pic_url, source, lifecycle_stage,
         customers ( id, razao_social, nome_fantasia )
       ),
       profiles ( full_name, email )
     `)
     .eq("tenant_id", tenantId)
     .eq("pipeline_id", currentPipeline.id)
+    .in("stage_id", activeStageIds.length > 0 ? activeStageIds : ["__none__"])
     .order("card_position", { ascending: true })
 
   if (!canSeeAll) convQuery = convQuery.eq("assigned_to", session.user.id)
@@ -127,31 +134,46 @@ export default async function PipelinePage({
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Pills de funil */}
+        <div className="flex items-center gap-3">
+          {/* Seletor de funil — pills com cor do funil */}
           {pipelines.length > 1 && (
-            <div className="flex items-center gap-1 shrink-0">
-              {pipelines.map((p) => (
-                <a
-                  key={p.id}
-                  href={`/marketing/pipeline?pipeline=${p.id}`}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
-                    p.id === currentPipeline.id
-                      ? "bg-blue-50 text-blue-700"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                  }`}
-                >
-                  {p.name}
-                </a>
-              ))}
+            <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg p-1 shrink-0">
+              {pipelines.map((p) => {
+                const active = p.id === currentPipeline.id
+                return (
+                  <a
+                    key={p.id}
+                    href={`/marketing/pipeline?pipeline=${p.id}`}
+                    className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-md transition-all ${
+                      active
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-500 hover:text-slate-900"
+                    }`}
+                    style={active ? { boxShadow: `inset 0 -2px 0 ${p.color}` } : undefined}
+                  >
+                    <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: p.color }} />
+                    {p.name}
+                  </a>
+                )
+              })}
             </div>
+          )}
+
+          {/* Quando há 1 só pipeline, mostra nome com cor pra indicar que pode criar mais */}
+          {pipelines.length === 1 && isAdminOrOwner && (
+            <Link
+              href="/marketing/pipeline/configuracao"
+              className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-blue-600 px-2 py-1 rounded-md hover:bg-slate-50 transition-colors"
+            >
+              <Plus className="size-3" /> Novo funil
+            </Link>
           )}
 
           {isAdminOrOwner && (
             <Link
               href="/marketing/pipeline/configuracao"
               title="Configurar funis"
-              className="size-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors"
+              className="size-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition-colors shrink-0"
             >
               <Settings className="size-4" />
             </Link>
@@ -161,7 +183,7 @@ export default async function PipelinePage({
 
       <div className="p-4">
         <ConversationKanban
-          stages={(stages ?? []) as any}
+          stages={(stages ?? []).filter((s) => !s.is_triage) as any}
           conversations={(conversations ?? []) as any}
           orderStats={orderStatsByCustomer}
         />

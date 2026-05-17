@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { supabaseAdmin } from "@/lib/supabase"
-import { jidToPhone, getMediaBase64 } from "@/lib/evolution-api"
+import { jidToPhone, getMediaBase64, fetchProfilePictureUrl, fetchGroupMetadata } from "@/lib/evolution-api"
 import type { EvolutionMessageData } from "@/types/chat"
 
 const CHAT_BUCKET = "chat-attachments"
@@ -171,15 +171,21 @@ async function handleMessageUpsert(
   for (const msg of messages) {
     if (!msg.key?.remoteJid) continue
 
-    // Ignora grupos e broadcasts
     const jid = msg.key.remoteJid
-    if (jid.includes("@g.us") || jid === "status@broadcast") continue
+
+    // Ignora broadcasts sempre (não há decisão razoável)
+    if (jid === "status@broadcast") continue
+
+    // ── Grupo: aplica lógica de opt-in ──────────────────────
+    const isGroup = jid.includes("@g.us")
+    if (isGroup) {
+      const decision = await resolveGroupOptIn(instance, jid, msg)
+      if (decision === "ignore" || decision === "pending") continue
+      // decision === "monitor" → segue o fluxo abaixo, mas com lógica de grupo
+    }
 
     // fromMe = mensagem enviada pelo número conectado (agente)
-    // Não processamos mensagens enviadas por nós mesmos via webhook
-    // (elas já são salvas quando o agente envia pela interface)
     if (msg.key.fromMe) {
-      // Apenas atualiza o whatsapp_msg_id se a mensagem já existe no DB
       if (msg.key.id) {
         await supabaseAdmin
           .from("chat_messages")
@@ -192,17 +198,27 @@ async function handleMessageUpsert(
       continue
     }
 
-    const phone    = jidToPhone(jid)
     const pushName = msg.pushName ?? null
-
-    // Extrai conteúdo da mensagem
     const { contentType, content, mediaMimeType, mediaFileName } = extractMessageContent(msg)
 
-    // 1. Busca ou cria contato
-    const contact = await findOrCreateContact(tenantId, jid, phone, pushName)
+    let contact:      { id: string; customer_id?: string | null } | null = null
+    let conversation: { id: string; status: string; unread_count: number }
+    let participantJid: string | null = null
 
-    // 2. Busca ou cria conversa
-    const conversation = await findOrCreateConversation(tenantId, contact.id, instanceId)
+    if (isGroup) {
+      // Grupo: contato = sender dentro do grupo (msg.key.participant), conversa = grupo
+      participantJid = (msg.key as any).participant ?? null
+      const memberPhone = participantJid ? jidToPhone(participantJid) : ""
+      if (participantJid && memberPhone) {
+        contact = await findOrCreateContact(tenantId, participantJid, memberPhone, pushName, instance)
+      }
+      conversation = await findOrCreateGroupConversation(tenantId, instanceId, jid, pushName)
+    } else {
+      // 1-1: contato = remetente, conversa = 1-1
+      const phone = jidToPhone(jid)
+      contact = await findOrCreateContact(tenantId, jid, phone, pushName, instance)
+      conversation = await findOrCreateConversation(tenantId, contact.id, instanceId)
+    }
 
     // 3. Se for mídia, baixa da Evolution e armazena no nosso bucket
     let finalMediaUrl: string | null = null
@@ -230,19 +246,20 @@ async function handleMessageUpsert(
 
     // 4. Insere mensagem
     await supabaseAdmin.from("chat_messages").insert({
-      conversation_id: conversation.id,
-      tenant_id:       tenantId,
-      sender_type:     "contact",
-      sender_id:       contact.id,
-      content_type:    contentType,
+      conversation_id:       conversation.id,
+      tenant_id:             tenantId,
+      sender_type:           "contact",
+      sender_id:             contact?.id ?? null,
+      content_type:          contentType,
       content,
-      media_url:       finalMediaUrl,
-      media_mime_type: finalMimeType,
-      media_file_name: mediaFileName,
-      whatsapp_msg_id: msg.key.id ?? null,
-      status:          "delivered",
-      is_private_note: false,
-      metadata:        Object.keys(metadata).length > 0 ? metadata : {},
+      media_url:             finalMediaUrl,
+      media_mime_type:       finalMimeType,
+      media_file_name:       mediaFileName,
+      whatsapp_msg_id:       msg.key.id ?? null,
+      status:                "delivered",
+      is_private_note:       false,
+      metadata:              Object.keys(metadata).length > 0 ? metadata : {},
+      group_participant_jid: isGroup ? participantJid : null,
     })
 
     // 4. Atualiza conversa com preview e contadores
@@ -358,11 +375,12 @@ async function findOrCreateContact(
   jid:       string,
   phone:     string,
   pushName:  string | null,
+  instance?: { evolution_url: string; evolution_key: string; instance_name: string },
 ) {
   // Tenta buscar contato existente
   const { data: existing } = await supabaseAdmin
     .from("chat_contacts")
-    .select("id, customer_id")
+    .select("id, customer_id, profile_pic_url")
     .eq("tenant_id", tenantId)
     .eq("whatsapp_id", jid)
     .single()
@@ -374,6 +392,10 @@ async function findOrCreateContact(
         .from("chat_contacts")
         .update({ push_name: pushName, updated_at: new Date().toISOString() })
         .eq("id", existing.id)
+    }
+    // Se o contato ainda não tem foto, tenta puxar em background
+    if (!existing.profile_pic_url && instance) {
+      fetchAndSaveProfilePicture(instance, jid, existing.id).catch(() => {})
     }
     return existing
   }
@@ -414,7 +436,37 @@ async function findOrCreateContact(
     .single()
 
   if (error || !newContact) throw new Error(`Failed to create contact: ${error?.message}`)
+
+  // Em background, tenta puxar a foto de perfil do WhatsApp do novo contato
+  if (instance) {
+    fetchAndSaveProfilePicture(instance, jid, newContact.id).catch(() => {})
+  }
+
   return newContact
+}
+
+/**
+ * Busca a URL da foto de perfil do WhatsApp e grava em chat_contacts.profile_pic_url.
+ * Fire-and-forget — falhas silenciosas (foto privada, número novo, etc).
+ */
+async function fetchAndSaveProfilePicture(
+  instance:  { evolution_url: string; evolution_key: string; instance_name: string },
+  jid:       string,
+  contactId: string,
+) {
+  const url = await fetchProfilePictureUrl(
+    {
+      url:          instance.evolution_url,
+      apiKey:       instance.evolution_key,
+      instanceName: instance.instance_name,
+    },
+    jid,
+  )
+  if (!url) return
+  await supabaseAdmin
+    .from("chat_contacts")
+    .update({ profile_pic_url: url, updated_at: new Date().toISOString() })
+    .eq("id", contactId)
 }
 
 async function findOrCreateConversation(
@@ -435,7 +487,8 @@ async function findOrCreateConversation(
 
   if (existing) return existing
 
-  // Auto-atribui ao pipeline default + primeiro estágio
+  // Atribui ao pipeline default no estágio de Triagem (NÃO no funil real)
+  // Lead só entra no funil quando atendente clica "Qualificar".
   let pipelineId: string | null = null
   let stageId:    string | null = null
 
@@ -447,15 +500,38 @@ async function findOrCreateConversation(
 
   if (marketingConfig?.default_pipeline_id) {
     pipelineId = marketingConfig.default_pipeline_id
-    const { data: firstStage } = await supabaseAdmin
+
+    // Tenta encontrar o estágio de Triagem do pipeline
+    const { data: triageStage } = await supabaseAdmin
       .from("pipeline_stages")
       .select("id")
       .eq("pipeline_id", pipelineId)
       .eq("tenant_id", tenantId)
+      .eq("is_triage", true)
       .order("position", { ascending: true })
       .limit(1)
       .maybeSingle()
-    stageId = firstStage?.id ?? null
+
+    if (triageStage) {
+      stageId = triageStage.id
+    } else {
+      // Se não existe Triagem ainda (pipeline antigo), cria automaticamente
+      const { data: newTriage } = await supabaseAdmin
+        .from("pipeline_stages")
+        .insert({
+          tenant_id:   tenantId,
+          pipeline_id: pipelineId,
+          name:        "Triagem",
+          color:       "#94a3b8",
+          position:    -1,
+          is_triage:   true,
+          is_won:      false,
+          is_lost:     false,
+        })
+        .select("id")
+        .single()
+      stageId = newTriage?.id ?? null
+    }
   }
 
   // Cria nova conversa já no pipeline
@@ -475,5 +551,119 @@ async function findOrCreateConversation(
     .single()
 
   if (error || !newConv) throw new Error(`Failed to create conversation: ${error?.message}`)
+  return newConv
+}
+
+// ── Grupos: opt-in ─────────────────────────────────────────
+
+/**
+ * Resolve a decisão sobre um grupo: monitor / ignore / pending.
+ *   - Se já existe whitelist entry: retorna o status atual
+ *   - Se não existe: cria como "pending" e retorna "pending" (não processa a mensagem)
+ *
+ * Não bloqueia o processamento da mensagem aqui — quem decide ignorar
+ * a mensagem é o caller, baseado no retorno.
+ */
+async function resolveGroupOptIn(
+  instance: { id: string; tenant_id: string },
+  groupJid: string,
+  msg:      EvolutionMessageData,
+): Promise<"monitor" | "ignore" | "pending"> {
+  const { data: existing } = await supabaseAdmin
+    .from("chat_groups_whitelist")
+    .select("status")
+    .eq("tenant_id", instance.tenant_id)
+    .eq("group_jid", groupJid)
+    .maybeSingle()
+
+  if (existing) return existing.status as "monitor" | "ignore" | "pending"
+
+  // Primeira vez que vemos esse grupo — cria como pending
+  const subject = (msg as any)?.message?.groupSubject
+              ?? (msg as any)?.subject
+              ?? null
+
+  await supabaseAdmin
+    .from("chat_groups_whitelist")
+    .insert({
+      tenant_id:   instance.tenant_id,
+      instance_id: instance.id,
+      group_jid:   groupJid,
+      group_name:  subject,
+      status:      "pending",
+    })
+    .select("id")
+    .maybeSingle()
+
+  return "pending"
+}
+
+/**
+ * Cria/retorna a conversa de grupo. Diferente de findOrCreateConversation:
+ *   - chave de busca é group_jid (não contact_id)
+ *   - is_group = true
+ *   - contact_id pode ser null (não há "dono" único)
+ */
+async function findOrCreateGroupConversation(
+  tenantId:   string,
+  instanceId: string,
+  groupJid:   string,
+  groupName:  string | null,
+) {
+  const { data: existing } = await supabaseAdmin
+    .from("chat_conversations")
+    .select("id, status, unread_count")
+    .eq("tenant_id", tenantId)
+    .eq("group_jid", groupJid)
+    .eq("is_group", true)
+    .in("status", ["open", "pending", "snoozed"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) return existing
+
+  // Auto-atribui ao pipeline default (mesma lógica de 1-1)
+  let pipelineId: string | null = null
+  let stageId:    string | null = null
+
+  const { data: mc } = await supabaseAdmin
+    .from("tenant_marketing_config")
+    .select("default_pipeline_id")
+    .eq("tenant_id", tenantId)
+    .maybeSingle()
+
+  if (mc?.default_pipeline_id) {
+    pipelineId = mc.default_pipeline_id
+    const { data: triageStage } = await supabaseAdmin
+      .from("pipeline_stages")
+      .select("id")
+      .eq("pipeline_id", pipelineId)
+      .eq("tenant_id", tenantId)
+      .eq("is_triage", true)
+      .limit(1)
+      .maybeSingle()
+    stageId = triageStage?.id ?? null
+  }
+
+  const { data: newConv, error } = await supabaseAdmin
+    .from("chat_conversations")
+    .insert({
+      tenant_id:     tenantId,
+      contact_id:    null,
+      instance_id:   instanceId,
+      status:        "open",
+      unread_count:  0,
+      pipeline_id:   pipelineId,
+      stage_id:      stageId,
+      card_position: 0,
+      is_group:      true,
+      group_jid:     groupJid,
+      group_name:    groupName,
+    })
+    .select("id, status, unread_count")
+    .single()
+
+  if (error || !newConv) throw new Error(`Failed to create group conversation: ${error?.message}`)
   return newConv
 }

@@ -5,14 +5,16 @@ import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { useState } from "react"
 import {
-  LayoutDashboard, Building2, CreditCard,
+  LayoutDashboard, Building2, CreditCard, Activity, ScrollText,
   LogOut, Shield, ExternalLink,
 } from "lucide-react"
 
 const NAV = [
-  { label: "Dashboard",  href: "/god",         icon: LayoutDashboard },
-  { label: "Tenants",    href: "/god/tenants",  icon: Building2 },
-  { label: "Planos",     href: "/god/planos",   icon: CreditCard },
+  { label: "Dashboard",  href: "/god",           icon: LayoutDashboard },
+  { label: "Saúde",      href: "/god/saude",     icon: Activity },
+  { label: "Tenants",    href: "/god/tenants",   icon: Building2 },
+  { label: "Planos",     href: "/god/planos",    icon: CreditCard },
+  { label: "Auditoria",  href: "/god/auditoria", icon: ScrollText },
 ]
 
 interface Props { adminName: string; adminEmail: string }

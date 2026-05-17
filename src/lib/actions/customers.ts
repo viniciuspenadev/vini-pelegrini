@@ -5,17 +5,36 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
 
+/**
+ * Constrói o objeto metadata a partir dos campos prefixados com "meta_" no FormData.
+ * Aceita: meta_origem, meta_endereco_obra, meta_designer_parceiro, meta_profissao,
+ *         meta_co_titular_nome, meta_co_titular_cpf
+ */
+function buildMetadata(formData: FormData): Record<string, unknown> {
+  const meta: Record<string, unknown> = {}
+  const keys = ["origem", "endereco_obra", "designer_parceiro", "profissao", "co_titular_nome", "co_titular_cpf"]
+  for (const k of keys) {
+    const v = formData.get(`meta_${k}`)
+    if (typeof v === "string" && v.trim()) meta[k] = v.trim()
+  }
+  return meta
+}
+
 export async function createCustomer(formData: FormData) {
   const session = await auth()
   if (!session) throw new Error("Não autenticado")
 
-  const isento           = formData.get("isento_ie") === "on"
-  const contribuinte     = formData.get("contribuinte_icms") === "on"
+  const kind         = (formData.get("kind") as string) === "B2C" ? "B2C" : "B2B"
+  const isento       = formData.get("isento_ie") === "on"
+  const contribuinte = formData.get("contribuinte_icms") === "on"
+  const metadata     = buildMetadata(formData)
 
   const payload = {
     tenant_id:           session.user.tenantId,
     owner_id:            session.user.id,
     created_by:          session.user.id,
+    kind,
+    metadata,
     razao_social:        formData.get("razao_social") as string,
     nome_fantasia:       formData.get("nome_fantasia") as string || null,
     cnpj_cpf:            formData.get("cnpj_cpf") as string,
@@ -63,16 +82,24 @@ export async function updateCustomer(id: string, formData: FormData) {
 
   const isento       = formData.get("isento_ie") === "on"
   const contribuinte = formData.get("contribuinte_icms") === "on"
+  const newMetadata  = buildMetadata(formData)
+  const kindParam    = formData.get("kind") as string | null
 
-  // Busca vendedor atual antes de sobrescrever
+  // Busca vendedor + metadata atual antes de sobrescrever
   const { data: existing } = await supabaseAdmin
     .from("customers")
-    .select("vendedor_id")
+    .select("vendedor_id, kind, metadata")
     .eq("id", id)
     .eq("tenant_id", session.user.tenantId)
     .single()
 
+  // Merge metadata (preserva chaves existentes que não vieram no form)
+  const mergedMetadata = { ...(existing?.metadata ?? {}), ...newMetadata }
+
   const payload = {
+    // kind só muda se foi enviado explicitamente — senão mantém o atual
+    ...(kindParam === "B2B" || kindParam === "B2C" ? { kind: kindParam } : {}),
+    metadata:            mergedMetadata,
     razao_social:        formData.get("razao_social") as string,
     nome_fantasia:       formData.get("nome_fantasia") as string || null,
     cnpj_cpf:            formData.get("cnpj_cpf") as string,

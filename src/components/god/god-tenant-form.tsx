@@ -2,10 +2,11 @@
 
 import { useTransition, useState } from "react"
 import { createTenant } from "@/lib/actions/god"
-import { Building2, User, Lock, Layers } from "lucide-react"
+import { Building2, User, Lock, Layers, Briefcase } from "lucide-react"
 
-interface Plan { id: string; name: string; modules: string[]; limits: Record<string, number> }
-interface Props { plans: Plan[] }
+interface Plan    { id: string; name: string; modules: string[]; limits: Record<string, number> }
+interface Segment { slug: string; label: string }
+interface Props   { plans: Plan[]; segments: Segment[] }
 
 const inputBase = "flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-card focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500"
 
@@ -23,9 +24,10 @@ function Section({ title, icon, children }: { title: string; icon: React.ReactNo
   )
 }
 
-export function GodTenantForm({ plans }: Props) {
+export function GodTenantForm({ plans, segments }: Props) {
   const [pending, startTransition] = useTransition()
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(plans[0] ?? null)
+  const [segment, setSegment] = useState<string>(segments[0]?.slug ?? "pescados")
   const [name, setName] = useState("")
 
   const slug = name
@@ -42,6 +44,7 @@ export function GodTenantForm({ plans }: Props) {
     fd.set("modules", JSON.stringify(selectedPlan?.modules ?? []))
     fd.set("plan_id", selectedPlan?.id ?? "")
     fd.set("plan", selectedPlan?.name ?? "trial")
+    fd.set("segment", segment)
     startTransition(() => createTenant(fd))
   }
 
@@ -68,6 +71,25 @@ export function GodTenantForm({ plans }: Props) {
             className={`${inputBase} bg-slate-50 text-slate-500 font-mono cursor-not-allowed`}
           />
           <p className="text-[11px] text-slate-400">Gerado automaticamente. Identifica o tenant na plataforma.</p>
+        </div>
+      </Section>
+
+      <Section title="Segmento" icon={<Briefcase />}>
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-slate-700">Vertical de negócio *</label>
+          <select
+            value={segment}
+            onChange={(e) => setSegment(e.target.value)}
+            className={inputBase}
+          >
+            {segments.map((s) => (
+              <option key={s.slug} value={s.slug}>{s.label}</option>
+            ))}
+          </select>
+          <p className="text-[11px] text-slate-400">
+            Define como o inbox, o cadastro de cliente e o financeiro se comportam para este tenant.
+            Pode ser trocado depois, mas reorganiza UI e templates.
+          </p>
         </div>
       </Section>
 

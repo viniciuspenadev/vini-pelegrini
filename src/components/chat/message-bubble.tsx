@@ -11,9 +11,11 @@ import { AudioPlayer } from "./audio-player"
 interface Props {
   message:    ChatMessage
   agentName?: string | null
+  /** Para conversas de grupo: nome do participante (se conhecido) ou número formatado. */
+  senderLabel?: string | null
 }
 
-export function MessageBubble({ message, agentName }: Props) {
+export function MessageBubble({ message, agentName, senderLabel }: Props) {
   const isIncoming = message.sender_type === "contact"
   const isSystem   = message.sender_type === "system"
   const isNote     = message.is_private_note
@@ -73,6 +75,13 @@ export function MessageBubble({ message, agentName }: Props) {
             : "bg-blue-600 text-white rounded-br-md shadow-sm shadow-blue-600/20"
         }`}
       >
+        {/* Nome do remetente — mensagens recebidas */}
+        {isIncoming && senderLabel && (
+          <p className="text-[10px] font-semibold text-blue-600 mb-0.5 truncate">
+            {senderLabel}
+          </p>
+        )}
+
         {/* Agent name for outgoing */}
         {!isIncoming && agentName && (
           <p className="text-[10px] font-medium text-blue-200 mb-0.5">

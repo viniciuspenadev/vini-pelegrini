@@ -4,11 +4,25 @@ import { useState, useTransition, useEffect } from "react"
 import Link from "next/link"
 import { formatPhoneDisplay } from "@/lib/evolution-api"
 import {
-  User, Mail, MapPin, Tag, ShoppingCart, ExternalLink,
+  User, Tag, ShoppingCart, ExternalLink, Mail, MapPin, Phone, FileText, IdCard,
   Trophy, X, Calendar, DollarSign, ChevronDown, AlertTriangle,
   Plus, Search, Building2, Ban, Archive, Trash2, UserPlus,
-  CheckCircle2, Loader2,
+  CheckCircle2, Loader2, Users, CreditCard,
 } from "lucide-react"
+import type { IconName } from "@/lib/segments/types"
+
+const ICON_MAP: Record<IconName, typeof User> = {
+  "user":           User,
+  "users":          Users,
+  "mail":           Mail,
+  "map-pin":        MapPin,
+  "phone":          Phone,
+  "file-text":      FileText,
+  "id-card":        IdCard,
+  "building":       Building2,
+  "shopping-cart":  ShoppingCart,
+  "credit-card":    CreditCard,
+}
 import {
   linkCustomerToContact,
   setContactBlocked,
@@ -25,16 +39,20 @@ import {
 } from "@/lib/actions/pipeline"
 import { applyTag, removeTag } from "@/lib/actions/tags"
 import type { ChatContact, ChatConversation } from "@/types/chat"
+import type { SegmentSidebarConfig, FinancialMetricKey } from "@/lib/segments/types"
 
 interface CustomerInfo {
-  id:              string
-  razao_social:    string
-  nome_fantasia:   string | null
-  cnpj_cpf:        string
-  comprador_nome:  string | null
+  id:               string
+  razao_social:     string
+  nome_fantasia:    string | null
+  cnpj_cpf:         string
+  comprador_nome:   string | null
   email_financeiro: string | null
-  cidade:          string | null
-  estado:          string | null
+  telefone:         string | null
+  cidade:           string | null
+  estado:           string | null
+  // Acesso por chave genérica (registry-driven)
+  [key: string]: unknown
 }
 
 interface RecentOrder {
@@ -70,9 +88,31 @@ interface Props {
   tags:          TagMini[]
   tagsByContact: Record<string, string[]>
   agents:        AgentMini[]
+  segmentConfig: SegmentSidebarConfig
 }
 
 const BRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
+
+/** Pega o nome principal a partir dos customerFields marcados como primary. */
+function pickPrimaryName(customer: CustomerInfo | null, config: SegmentSidebarConfig): string | null {
+  if (!customer) return null
+  for (const f of config.customerFields) {
+    if (!f.primary) continue
+    const v = customer[f.key]
+    if (typeof v === "string" && v.trim()) return v
+  }
+  return null
+}
+
+/** Resolve o valor de uma chave de campo, incluindo "cidade_estado" composto. */
+function readCustomerField(customer: CustomerInfo, key: string): string | null {
+  if (key === "cidade_estado") {
+    const parts = [customer.cidade, customer.estado].filter(Boolean) as string[]
+    return parts.length > 0 ? parts.join(" / ") : null
+  }
+  const v = customer[key]
+  return typeof v === "string" && v.trim() ? v : null
+}
 
 // ─── Sub-componente: Card de Pipeline ──────────────────────────
 function PipelineCard({
@@ -474,21 +514,55 @@ function LinkCustomerCard({ contactId }: { contactId: string }) {
 }
 
 // ─── Sub-componente: Mini financeiro ───────────────────────────
-function FinancialCard({ financials }: { financials: CustomerFinancials }) {
-  const score = financials.on_time_rate
-  const scoreLabel =
-    score == null ? "—" :
-    score >= 0.95 ? "Excelente" :
-    score >= 0.80 ? "Bom" :
-    score >= 0.60 ? "Regular" :
-    "Atenção"
+const METRIC_META: Record<FinancialMetricKey, { label: string; format: "currency" | "count" | "percent" }> = {
+  ltv:                { label: "LTV",          format: "currency" },
+  open_orders:        { label: "Em andamento", format: "count"    },
+  open_receivable:    { label: "Em aberto",    format: "currency" },
+  overdue_receivable: { label: "Vencido",      format: "currency" },
+  on_time_rate:       { label: "Pontualidade", format: "percent"  },
+  avg_ticket:         { label: "Ticket médio", format: "currency" },
+  mrr:                { label: "MRR",          format: "currency" },
+}
 
-  const scoreColor =
-    score == null ? "text-slate-400" :
-    score >= 0.95 ? "text-green-600" :
-    score >= 0.80 ? "text-blue-600" :
-    score >= 0.60 ? "text-amber-600" :
-    "text-red-600"
+function FinancialCard({
+  financials, metrics, recordLabelPlural,
+}: {
+  financials:        CustomerFinancials
+  metrics:           FinancialMetricKey[]
+  recordLabelPlural: string
+}) {
+  function getValue(key: FinancialMetricKey): number | null {
+    switch (key) {
+      case "ltv":                return financials.ltv
+      case "open_orders":        return financials.open_orders
+      case "open_receivable":    return financials.receivable_open
+      case "overdue_receivable": return financials.receivable_overdue
+      case "on_time_rate":       return financials.on_time_rate
+      case "avg_ticket": {
+        // Aproximação simples: LTV / max(open_orders, 1)
+        return financials.open_orders > 0 ? financials.ltv / financials.open_orders : null
+      }
+      case "mrr":                return null  // não calculado ainda
+    }
+  }
+
+  function renderValue(key: FinancialMetricKey, v: number | null): React.ReactNode {
+    const meta = METRIC_META[key]
+    if (v == null) return <span className="text-slate-400">—</span>
+    if (meta.format === "currency") return <span className="tabular-nums">{BRL(v)}</span>
+    if (meta.format === "count")    return <span className="tabular-nums">{v}</span>
+    if (meta.format === "percent") {
+      const pct  = Math.round(v * 100)
+      const lbl  = v >= 0.95 ? "Excelente" : v >= 0.8 ? "Bom" : v >= 0.6 ? "Regular" : "Atenção"
+      const cls  = v >= 0.95 ? "text-green-600" : v >= 0.8 ? "text-blue-600" : v >= 0.6 ? "text-amber-600" : "text-red-600"
+      return <span className={cls}>{pct}% <span className="text-[9px] font-medium">({lbl})</span></span>
+    }
+  }
+
+  function bgFor(key: FinancialMetricKey, v: number | null): string {
+    if (key === "overdue_receivable" && (v ?? 0) > 0) return "bg-red-50"
+    return "bg-slate-50"
+  }
 
   return (
     <div className="px-4 py-3 border-b border-slate-100">
@@ -498,32 +572,22 @@ function FinancialCard({ financials }: { financials: CustomerFinancials }) {
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="px-2 py-1.5 rounded-lg bg-slate-50">
-          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">LTV</p>
-          <p className="text-xs font-bold text-slate-800 tabular-nums">{BRL(financials.ltv)}</p>
-        </div>
-        <div className="px-2 py-1.5 rounded-lg bg-slate-50">
-          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Em aberto</p>
-          <p className="text-xs font-bold text-slate-800 tabular-nums">{BRL(financials.receivable_open)}</p>
-        </div>
-        <div className={`px-2 py-1.5 rounded-lg ${financials.receivable_overdue > 0 ? "bg-red-50" : "bg-slate-50"}`}>
-          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Vencido</p>
-          <p className={`text-xs font-bold tabular-nums ${financials.receivable_overdue > 0 ? "text-red-600" : "text-slate-800"}`}>
-            {BRL(financials.receivable_overdue)}
-          </p>
-        </div>
-        <div className="px-2 py-1.5 rounded-lg bg-slate-50">
-          <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">Pontualidade</p>
-          <p className={`text-xs font-bold ${scoreColor}`}>
-            {score != null ? `${Math.round(score * 100)}%` : "—"}
-            <span className="text-[9px] font-medium ml-1">({scoreLabel})</span>
-          </p>
-        </div>
+        {metrics.map((m) => {
+          const v = getValue(m)
+          return (
+            <div key={m} className={`px-2 py-1.5 rounded-lg ${bgFor(m, v)}`}>
+              <p className="text-[9px] font-semibold text-slate-400 uppercase tracking-wider">{METRIC_META[m].label}</p>
+              <p className="text-xs font-bold text-slate-800">
+                {renderValue(m, v)}
+              </p>
+            </div>
+          )
+        })}
       </div>
 
-      {financials.open_orders > 0 && (
+      {financials.open_orders > 0 && !metrics.includes("open_orders") && (
         <p className="text-[10px] text-slate-500 mt-1.5">
-          <span className="font-bold">{financials.open_orders}</span> pedido(s) em andamento.
+          <span className="font-bold">{financials.open_orders}</span> {recordLabelPlural.toLowerCase()} em andamento.
         </p>
       )}
     </div>
@@ -625,7 +689,7 @@ function ParticipantsCard({
 // ═══════════════════════════════════════════════════════════════
 export function ContactSidebar({
   conversation, contact, customer, recentOrders, financials,
-  pipelines, stages, tags, tagsByContact, agents,
+  pipelines, stages, tags, tagsByContact, agents, segmentConfig,
 }: Props) {
   const [, startTransition] = useTransition()
   const [showActions, setShowActions] = useState(false)
@@ -694,7 +758,7 @@ export function ContactSidebar({
           )}
         </div>
         <p className="text-sm font-semibold text-slate-900 text-center truncate max-w-full">
-          {customer?.nome_fantasia ?? customer?.razao_social ?? contact.push_name ?? formatPhoneDisplay(contact.phone_number)}
+          {pickPrimaryName(customer, segmentConfig) ?? contact.push_name ?? formatPhoneDisplay(contact.phone_number)}
         </p>
         <p className="text-[11px] text-slate-400 font-mono mt-0.5">
           {formatPhoneDisplay(contact.phone_number)}
@@ -723,7 +787,7 @@ export function ContactSidebar({
             <div className="flex items-center gap-1.5">
               <CheckCircle2 className="size-3.5 text-green-600" />
               <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
-                Cliente Vinculado
+                {segmentConfig.customerLabel}
               </span>
             </div>
             <div className="flex items-center gap-1">
@@ -744,30 +808,28 @@ export function ContactSidebar({
             </div>
           </div>
           <div className="space-y-1.5">
-            <div>
-              <p className="text-xs font-medium text-slate-900">
-                {customer.nome_fantasia ?? customer.razao_social}
-              </p>
-              <p className="text-[10px] text-slate-400 font-mono">{customer.cnpj_cpf}</p>
-            </div>
-            {customer.comprador_nome && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                <User className="size-3 text-slate-400 shrink-0" />
-                {customer.comprador_nome}
-              </div>
-            )}
-            {customer.email_financeiro && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                <Mail className="size-3 text-slate-400 shrink-0" />
-                <span className="truncate">{customer.email_financeiro}</span>
-              </div>
-            )}
-            {(customer.cidade || customer.estado) && (
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-600">
-                <MapPin className="size-3 text-slate-400 shrink-0" />
-                {[customer.cidade, customer.estado].filter(Boolean).join(" / ")}
-              </div>
-            )}
+            {segmentConfig.customerFields.map((field) => {
+              const value = readCustomerField(customer, field.key)
+              if (!value && field.hideIfEmpty) return null
+              if (field.primary) {
+                return (
+                  <div key={field.key}>
+                    <p className={`text-xs font-medium text-slate-900 ${field.mono ? "font-mono" : ""}`}>
+                      {value ?? "—"}
+                    </p>
+                  </div>
+                )
+              }
+              const Icon = field.icon ? ICON_MAP[field.icon] : null
+              return (
+                <div key={field.key} className="flex items-center gap-1.5 text-[11px] text-slate-600">
+                  {Icon && <Icon className="size-3 text-slate-400 shrink-0" />}
+                  <span className={`truncate ${field.mono ? "font-mono text-slate-400" : ""}`}>
+                    {value ?? "—"}
+                  </span>
+                </div>
+              )
+            })}
           </div>
         </div>
       ) : (
@@ -775,20 +837,28 @@ export function ContactSidebar({
       )}
 
       {/* Mini financeiro */}
-      {customer && financials && <FinancialCard financials={financials} />}
+      {customer && financials && segmentConfig.showFinancial && (
+        <FinancialCard
+          financials={financials}
+          metrics={segmentConfig.financialMetrics}
+          recordLabelPlural={segmentConfig.activity.recordLabel + "s"}
+        />
+      )}
 
-      {/* Últimos pedidos */}
+      {/* Atividade recente (pedidos / projetos / OS) */}
       {customer && (
         <div className="px-4 py-3 border-b border-slate-100">
           <div className="flex items-center gap-1.5 mb-2">
             <ShoppingCart className="size-3.5 text-slate-400" />
             <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
-              Últimos Pedidos
+              {segmentConfig.activity.label}
             </span>
           </div>
 
           {recentOrders.length === 0 ? (
-            <p className="text-[11px] text-slate-400 italic">Nenhum pedido.</p>
+            <p className="text-[11px] text-slate-400 italic">
+              Nenhum {segmentConfig.activity.recordLabel.toLowerCase()}.
+            </p>
           ) : (
             <div className="space-y-0.5">
               {recentOrders.map((order) => {
@@ -796,7 +866,7 @@ export function ContactSidebar({
                 return (
                   <Link
                     key={order.id}
-                    href={`/pedidos/${order.id}`}
+                    href={`${segmentConfig.activity.hrefPrefix}${order.id}`}
                     className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-slate-50 transition-colors group"
                   >
                     <div>

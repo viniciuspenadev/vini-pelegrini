@@ -2,7 +2,7 @@
 
 import { useTransition, useState } from "react"
 import { createPlan, updatePlan } from "@/lib/actions/god"
-import { ALL_MODULES } from "@/app/(god)/god/tenants/[id]/page"
+import { ALL_MODULES } from "@/lib/modules-catalog"
 
 interface Plan {
   id:            string

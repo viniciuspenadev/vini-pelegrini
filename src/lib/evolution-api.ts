@@ -199,6 +199,67 @@ export async function checkWhatsAppNumber(config: EvolutionConfig, phones: strin
   })
 }
 
+// ── Profile Picture ─────────────────────────────────────────
+
+/**
+ * Busca a URL da foto de perfil de um número.
+ * Retorna null se o usuário tem privacidade restrita ou foto não existe.
+ */
+export async function fetchProfilePictureUrl(
+  config: EvolutionConfig,
+  numberOrJid: string,
+): Promise<string | null> {
+  try {
+    const r = await evoFetch<{ profilePictureUrl?: string | null; wuid?: string }>(
+      config,
+      `/chat/fetchProfilePictureUrl/${config.instanceName}`,
+      {
+        method: "POST",
+        body: JSON.stringify({ number: numberOrJid }),
+      },
+    )
+    return r.profilePictureUrl ?? null
+  } catch {
+    return null
+  }
+}
+
+// ── Group Metadata ──────────────────────────────────────────
+
+export interface GroupParticipant {
+  id:           string   // JID do membro (5511...@s.whatsapp.net)
+  admin?:       string | null  // "admin" | "superadmin" | null
+}
+
+export interface GroupMetadata {
+  id:           string
+  subject?:     string   // nome do grupo
+  desc?:        string   // descrição
+  pictureUrl?:  string | null
+  size?:        number   // total de membros
+  participants?: GroupParticipant[]
+  owner?:       string
+  creation?:    number   // timestamp
+}
+
+/**
+ * Busca metadata de um grupo (nome, descrição, foto, lista de membros).
+ * Requer que a instância seja membro do grupo.
+ */
+export async function fetchGroupMetadata(
+  config: EvolutionConfig,
+  groupJid: string,
+): Promise<GroupMetadata | null> {
+  try {
+    return await evoFetch<GroupMetadata>(
+      config,
+      `/group/findGroupInfos/${config.instanceName}?groupJid=${encodeURIComponent(groupJid)}`,
+    )
+  } catch {
+    return null
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────
 
 /** Extrai número limpo de um WhatsApp JID */

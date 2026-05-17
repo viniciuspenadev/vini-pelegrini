@@ -10,15 +10,18 @@ import {
   ClipboardList, FileEdit, Users, Box, Tag, BadgeDollarSign,
   TrendingUp, TrendingDown, LineChart,
   Settings, FileCheck, FileX, UserCog, CreditCard, ScrollText,
-  MessageCircle, Inbox, Contact, Megaphone, Workflow,
+  MessageCircle, Inbox, Contact, Megaphone, Workflow, BarChart3,
 } from "lucide-react"
 import { getUnreadTotal } from "@/lib/actions/chat"
+import type { SegmentNavLabels } from "@/lib/segments/types"
 
 interface NavItem {
-  label: string
-  href:  string
-  icon:  React.ReactNode
-  soon?: boolean
+  label:    string
+  href:     string
+  icon:     React.ReactNode
+  soon?:    boolean
+  module?:  string     // chave única requerida
+  modules?: string[]   // OU pelo menos um destes módulos (alternativos por segmento)
 }
 
 interface NavGroup {
@@ -29,10 +32,15 @@ interface NavGroup {
   soon?:      boolean
   adminOnly?: boolean
   fiscalRole?: boolean
+  modules?:   string[]  // pelo menos um destes módulos precisa estar ativo
   children?:  NavItem[]
 }
 
 const subIcon = "w-4 h-4 shrink-0"
+
+// Módulos por segmento — para gate de menus segmento-shaped
+const ORDERS_MODULES   = ["pescados.pedidos",  "moveis.projetos"]
+const PRODUCTS_MODULES = ["pescados.produtos", "moveis.produtos"]
 
 const NAV: NavGroup[] = [
   {
@@ -40,37 +48,42 @@ const NAV: NavGroup[] = [
     label: "Painel",
     href:  "/",
     icon:  <LayoutDashboard className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
+    modules: ["core.dashboard"],
   },
   {
     key:   "vendas",
     label: "Vendas",
     icon:  <ShoppingCart className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
+    modules: [...ORDERS_MODULES, "core.crm"],
     children: [
-      { label: "Pedidos",    href: "/pedidos",    icon: <ClipboardList className={subIcon} strokeWidth={1.75} /> },
-      { label: "Orçamentos", href: "/orcamentos", icon: <FileEdit      className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Clientes",   href: "/clientes",   icon: <Users         className={subIcon} strokeWidth={1.75} /> },
+      { label: "Pedidos",    href: "/pedidos",    icon: <ClipboardList className={subIcon} strokeWidth={1.75} />, modules: ORDERS_MODULES },
+      { label: "Orçamentos", href: "/orcamentos", icon: <FileEdit      className={subIcon} strokeWidth={1.75} />, soon: true, modules: ORDERS_MODULES },
+      { label: "Clientes",   href: "/clientes",   icon: <Users         className={subIcon} strokeWidth={1.75} />, module:  "core.crm" },
     ],
   },
   {
     key:   "catalogo",
     label: "Catálogo",
     icon:  <Package className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
+    modules: PRODUCTS_MODULES,
     children: [
-      { label: "Produtos",         href: "/produtos",      icon: <Box             className={subIcon} strokeWidth={1.75} /> },
-      { label: "Categorias",       href: "/categorias",    icon: <Tag             className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Tabelas de Preço", href: "/tabelas-preco", icon: <BadgeDollarSign className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Produtos",         href: "/produtos",      icon: <Box             className={subIcon} strokeWidth={1.75} />, modules: PRODUCTS_MODULES },
+      { label: "Categorias",       href: "/categorias",    icon: <Tag             className={subIcon} strokeWidth={1.75} />, soon: true, modules: PRODUCTS_MODULES },
+      { label: "Tabelas de Preço", href: "/tabelas-preco", icon: <BadgeDollarSign className={subIcon} strokeWidth={1.75} />, soon: true, modules: PRODUCTS_MODULES },
     ],
   },
   {
     key:   "marketing",
     label: "Marketing",
     icon:  <MessageCircle className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
+    modules: ["marketing.inbox", "marketing.pipeline", "marketing.contatos", "marketing.relatorios", "marketing.campanhas"],
     children: [
-      { label: "Inbox",         href: "/marketing",              icon: <Inbox     className={subIcon} strokeWidth={1.75} /> },
-      { label: "Pipeline",      href: "/marketing/pipeline",     icon: <Workflow  className={subIcon} strokeWidth={1.75} /> },
-      { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} /> },
-      { label: "Campanhas",     href: "/marketing/campanhas",    icon: <Megaphone className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Configuração",  href: "/marketing/configuracao", icon: <Settings  className={subIcon} strokeWidth={1.75} /> },
+      { label: "Inbox",         href: "/marketing",              icon: <Inbox     className={subIcon} strokeWidth={1.75} />, module: "marketing.inbox" },
+      { label: "Pipeline",      href: "/marketing/pipeline",     icon: <Workflow  className={subIcon} strokeWidth={1.75} />, module: "marketing.pipeline" },
+      { label: "Contatos",      href: "/marketing/contatos",     icon: <Contact   className={subIcon} strokeWidth={1.75} />, module: "marketing.contatos" },
+      { label: "Relatórios",    href: "/marketing/relatorios",   icon: <BarChart3 className={subIcon} strokeWidth={1.75} />, module: "marketing.relatorios" },
+      { label: "Campanhas",     href: "/marketing/campanhas",    icon: <Megaphone className={subIcon} strokeWidth={1.75} />, soon: true, module: "marketing.campanhas" },
+      { label: "Configuração",  href: "/marketing/configuracao", icon: <Settings  className={subIcon} strokeWidth={1.75} />, module: "marketing.inbox" },
     ],
   },
   {
@@ -78,12 +91,13 @@ const NAV: NavGroup[] = [
     label: "Financeiro",
     icon:  <Wallet className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
     fiscalRole: true,
+    modules: ["financeiro.receber", "financeiro.pagamentos"],
     children: [
-      { label: "Visão Geral",      href: "/financeiro",              icon: <LayoutDashboard className={subIcon} strokeWidth={1.75} /> },
-      { label: "Contas a Receber", href: "/financeiro/recebimentos", icon: <TrendingUp     className={subIcon} strokeWidth={1.75} /> },
-      { label: "Contas a Pagar",   href: "/financeiro/pagamentos",   icon: <TrendingDown   className={subIcon} strokeWidth={1.75} /> },
-      { label: "Fluxo de Caixa",   href: "/financeiro/fluxo",        icon: <LineChart      className={subIcon} strokeWidth={1.75} /> },
-      { label: "Contas Bancárias", href: "/financeiro/contas",       icon: <CreditCard     className={subIcon} strokeWidth={1.75} /> },
+      { label: "Visão Geral",      href: "/financeiro",              icon: <LayoutDashboard className={subIcon} strokeWidth={1.75} />, modules: ["financeiro.receber", "financeiro.pagamentos"] },
+      { label: "Contas a Receber", href: "/financeiro/recebimentos", icon: <TrendingUp     className={subIcon} strokeWidth={1.75} />, module: "financeiro.receber" },
+      { label: "Contas a Pagar",   href: "/financeiro/pagamentos",   icon: <TrendingDown   className={subIcon} strokeWidth={1.75} />, module: "financeiro.pagamentos" },
+      { label: "Fluxo de Caixa",   href: "/financeiro/fluxo",        icon: <LineChart      className={subIcon} strokeWidth={1.75} />, modules: ["financeiro.receber", "financeiro.pagamentos"] },
+      { label: "Contas Bancárias", href: "/financeiro/contas",       icon: <CreditCard     className={subIcon} strokeWidth={1.75} />, modules: ["financeiro.receber", "financeiro.pagamentos"] },
     ],
   },
   {
@@ -91,10 +105,11 @@ const NAV: NavGroup[] = [
     label:      "Fiscal",
     icon:       <Receipt className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
     fiscalRole: true,
+    modules: ["fiscal.nfe", "fiscal.config"],
     children: [
-      { label: "Configuração",   href: "/configuracoes/fiscal",   icon: <Settings  className={subIcon} strokeWidth={1.75} /> },
-      { label: "NF-e Emitidas",  href: "/fiscal/nfe",              icon: <FileCheck className={subIcon} strokeWidth={1.75} />, soon: true },
-      { label: "Inutilizações",  href: "/fiscal/inutilizacoes",    icon: <FileX     className={subIcon} strokeWidth={1.75} />, soon: true },
+      { label: "Configuração",   href: "/configuracoes/fiscal",   icon: <Settings  className={subIcon} strokeWidth={1.75} />, module: "fiscal.config" },
+      { label: "NF-e Emitidas",  href: "/fiscal/nfe",              icon: <FileCheck className={subIcon} strokeWidth={1.75} />, soon: true, module: "fiscal.nfe" },
+      { label: "Inutilizações",  href: "/fiscal/inutilizacoes",    icon: <FileX     className={subIcon} strokeWidth={1.75} />, soon: true, module: "fiscal.nfe" },
     ],
   },
   {
@@ -103,7 +118,7 @@ const NAV: NavGroup[] = [
     icon:      <Settings2 className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
     adminOnly: true,
     children: [
-      { label: "Usuários",  href: "/usuarios",  icon: <UserCog    className={subIcon} strokeWidth={1.75} /> },
+      { label: "Usuários",  href: "/usuarios",  icon: <UserCog    className={subIcon} strokeWidth={1.75} />, module: "core.usuarios" },
       { label: "Plano",     href: "/plano",     icon: <CreditCard className={subIcon} strokeWidth={1.75} />, soon: true },
       { label: "Auditoria", href: "/auditoria", icon: <ScrollText className={subIcon} strokeWidth={1.75} />, soon: true },
     ],
@@ -111,18 +126,21 @@ const NAV: NavGroup[] = [
 ]
 
 interface SidebarProps {
-  userName:   string
-  userEmail:  string
-  tenantName: string
-  userRole:   string
+  userName:       string
+  userEmail:      string
+  tenantName:     string
+  userRole:       string
+  activeModules:  string[]
+  navLabels?:     SegmentNavLabels
 }
 
-export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarProps) {
+export function Sidebar({ userName, userEmail, tenantName, userRole, activeModules, navLabels }: SidebarProps) {
   const pathname              = usePathname()
   const [signing, setSigning] = useState(false)
   const [unreadTotal, setUnreadTotal] = useState(0)
   const isAdminOrOwner        = ["owner", "admin"].includes(userRole)
   const canViewFiscal         = ["owner", "admin", "financeiro"].includes(userRole)
+  const moduleSet             = useMemo(() => new Set(activeModules), [activeModules])
 
   // Polling do total de mensagens não-lidas (badge no menu Marketing)
   useEffect(() => {
@@ -138,17 +156,72 @@ export function Sidebar({ userName, userEmail, tenantName, userRole }: SidebarPr
     return () => { active = false; clearInterval(id) }
   }, [])
 
-  // Filter visible groups by role
+  // Filter visible groups by role + módulos ativos
   const visibleNav = useMemo(() => {
-    return NAV.filter((g) => {
-      if (g.adminOnly  && !isAdminOrOwner) return false
-      if (g.fiscalRole && !canViewFiscal)  return false
-      return true
-    })
-  }, [isAdminOrOwner, canViewFiscal])
+    return NAV
+      .filter((g) => {
+        if (g.adminOnly  && !isAdminOrOwner) return false
+        if (g.fiscalRole && !canViewFiscal)  return false
+        // Se o grupo declara módulos requeridos, pelo menos 1 precisa estar ativo
+        if (g.modules && g.modules.length > 0 && !g.modules.some((m) => moduleSet.has(m))) return false
+        return true
+      })
+      .map((g) => {
+        // Aplica labels dinâmicos do segmento
+        let groupLabel = g.label
+        if (g.key === "vendas"   && navLabels?.ordersGroup)  groupLabel = navLabels.ordersGroup
+        if (g.key === "catalogo" && navLabels?.catalogGroup) groupLabel = navLabels.catalogGroup
 
-  const isItemActive = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href)
+        return {
+          ...g,
+          label: groupLabel,
+          // Filtra subitens que dependem de módulo único OU lista de alternativos
+          children: g.children
+            ?.filter((c) => {
+              if (c.module && !moduleSet.has(c.module)) return false
+              if (c.modules && c.modules.length > 0 && !c.modules.some((m) => moduleSet.has(m))) return false
+              return true
+            })
+            .map((c) => {
+              let itemLabel = c.label
+              if (c.href === "/pedidos"    && navLabels?.orders)      itemLabel = navLabels.orders
+              if (c.href === "/orcamentos" && navLabels?.ordersDraft) itemLabel = navLabels.ordersDraft
+              if (c.href === "/produtos"   && navLabels?.products)    itemLabel = navLabels.products
+              return { ...c, label: itemLabel }
+            }),
+        }
+      })
+  }, [isAdminOrOwner, canViewFiscal, moduleSet, navLabels])
+
+  // Coleta todos os hrefs visíveis para longest-prefix match
+  const allHrefs = useMemo(() => {
+    const out: string[] = []
+    for (const g of NAV) {
+      if (g.href) out.push(g.href)
+      for (const c of g.children ?? []) out.push(c.href)
+    }
+    return out
+  }, [])
+
+  /**
+   * Longest-prefix match: um item só fica ativo se NENHUM outro href mais
+   * específico também casa com o pathname atual. Resolve "/marketing" ativando
+   * quando estou em "/marketing/pipeline".
+   */
+  const isItemActive = (href: string) => {
+    if (!href) return false
+    if (href === "/") return pathname === "/"
+    if (pathname === href) return true
+    if (!pathname.startsWith(href + "/")) return false
+
+    // Existe outro href mais específico que ainda casa? Se sim, este não é ativo.
+    const moreSpecific = allHrefs.find((h) =>
+      h !== href &&
+      h.startsWith(href + "/") &&
+      (pathname === h || pathname.startsWith(h + "/"))
+    )
+    return !moreSpecific
+  }
 
   const isGroupActive = (group: NavGroup) => {
     if (group.href && isItemActive(group.href)) return true

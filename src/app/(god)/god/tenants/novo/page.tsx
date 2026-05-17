@@ -2,6 +2,7 @@ import { supabaseAdmin } from "@/lib/supabase"
 import { GodTenantForm } from "@/components/god/god-tenant-form"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 import Link from "next/link"
+import { listSegments } from "@/lib/segments/registry"
 
 export default async function NovoTenantPage() {
   const { data: plans } = await supabaseAdmin
@@ -9,6 +10,8 @@ export default async function NovoTenantPage() {
     .select("id, name, modules, limits")
     .eq("is_active", true)
     .order("price_monthly")
+
+  const segments = listSegments()
 
   return (
     <div className="min-h-full bg-blue-50">
@@ -26,7 +29,7 @@ export default async function NovoTenantPage() {
         </div>
       </div>
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-6">
-        <GodTenantForm plans={plans ?? []} />
+        <GodTenantForm plans={plans ?? []} segments={segments} />
       </div>
     </div>
   )

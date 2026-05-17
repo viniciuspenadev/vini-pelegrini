@@ -26,6 +26,8 @@ interface Customer {
   razao_social:      string
   nome_fantasia:     string | null
   cnpj_cpf:          string
+  kind:              "B2B" | "B2C"
+  origem:            string | null
   cidade:            string | null
   estado:            string | null
   rota_entrega:      string | null
@@ -39,9 +41,12 @@ interface Props {
   isAdminOrOwner: boolean
 }
 
+type KindTab = "all" | "B2B" | "B2C"
+
 export function ClientesList({ customers, isAdminOrOwner }: Props) {
   const [search, setSearch]   = useState("")
   const [tab, setTab]         = useState<StatusTab>("todos")
+  const [kindTab, setKindTab] = useState<KindTab>("all")
 
   const counts = useMemo(() => ({
     todos:     customers.length,
@@ -54,6 +59,7 @@ export function ClientesList({ customers, isAdminOrOwner }: Props) {
     const q = search.trim().toLowerCase()
     return customers.filter((c) => {
       if (tab !== "todos" && c.status !== tab) return false
+      if (kindTab !== "all" && c.kind !== kindTab) return false
       if (!q) return true
       const nome   = (c.nome_fantasia || c.razao_social).toLowerCase()
       const razao  = c.razao_social.toLowerCase()
@@ -61,7 +67,7 @@ export function ClientesList({ customers, isAdminOrOwner }: Props) {
       const cidade = (c.cidade ?? "").toLowerCase()
       return nome.includes(q) || razao.includes(q) || cnpj.includes(q.replace(/\D/g, "")) || cidade.includes(q)
     })
-  }, [customers, search, tab])
+  }, [customers, search, tab, kindTab])
 
   const GRID = isAdminOrOwner ? GRID_ADMIN : GRID_VEND
 
@@ -102,6 +108,25 @@ export function ClientesList({ customers, isAdminOrOwner }: Props) {
               <X className="size-3.5" />
             </button>
           )}
+        </div>
+
+        {/* Filtro Kind (PF/PJ) */}
+        <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1 shadow-card shrink-0">
+          {(["all", "B2B", "B2C"] as const).map((k) => (
+            <button
+              key={k}
+              onClick={() => setKindTab(k)}
+              className={`h-7 px-3 rounded-md text-xs font-semibold transition-colors whitespace-nowrap ${
+                kindTab === k
+                  ? k === "B2C" ? "bg-green-600 text-white shadow-sm"
+                    : k === "B2B" ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-slate-700 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-800 hover:bg-slate-50"
+              }`}
+            >
+              {k === "all" ? "Todos" : k === "B2B" ? "PJ" : "PF"}
+            </button>
+          ))}
         </div>
 
         {/* Status tabs */}
@@ -190,7 +215,16 @@ export function ClientesList({ customers, isAdminOrOwner }: Props) {
 
                 {/* Cliente — main info */}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-slate-900 truncate leading-none">{nome}</p>
+                  <div className="flex items-center gap-1.5">
+                    <p className="text-sm font-semibold text-slate-900 truncate leading-none">{nome}</p>
+                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                      c.kind === "B2C"
+                        ? "bg-green-50 text-green-700 ring-1 ring-green-100"
+                        : "bg-blue-50 text-blue-700 ring-1 ring-blue-100"
+                    }`}>
+                      {c.kind === "B2C" ? "PF" : "PJ"}
+                    </span>
+                  </div>
                   <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className="text-[11px] font-mono text-slate-400">{c.cnpj_cpf}</span>
                     {c.nome_fantasia && c.razao_social !== c.nome_fantasia && (

@@ -52,10 +52,11 @@ export async function ensurePipelineBootstrap(tenantId: string, segment: string 
     tenant_id:       tenantId,
     name:            s.name,
     color:           s.color,
-    position:        i,
+    position:        s.is_triage ? -1 : i,   // triagem fica antes do funil real
     probability_pct: s.probability_pct,
-    is_won:          s.is_won ?? false,
-    is_lost:         s.is_lost ?? false,
+    is_won:          s.is_won    ?? false,
+    is_lost:         s.is_lost   ?? false,
+    is_triage:       s.is_triage ?? false,
   }))
 
   await supabaseAdmin.from("pipeline_stages").insert(stages)
@@ -298,6 +299,28 @@ export async function moveConversation(
     .update(updates)
     .eq("id", conversationId)
     .eq("tenant_id", session.user.tenantId)
+
+  // Atualiza lifecycle do contato quando o deal é ganho
+  if (newStage.is_won) {
+    // Busca contact_id da conversa
+    const { data: convWithContact } = await supabaseAdmin
+      .from("chat_conversations")
+      .select("contact_id")
+      .eq("id", conversationId)
+      .single()
+
+    if (convWithContact?.contact_id) {
+      await supabaseAdmin
+        .from("chat_contacts")
+        .update({
+          lifecycle_stage:      "customer",
+          lifecycle_changed_at: new Date().toISOString(),
+          updated_at:           new Date().toISOString(),
+        })
+        .eq("id", convWithContact.contact_id)
+        .eq("tenant_id", session.user.tenantId)
+    }
+  }
 
   // Insere mensagem sistema marcando a transição
   if (conv.stage_id !== newStageId) {

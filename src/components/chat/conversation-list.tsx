@@ -2,11 +2,13 @@
 
 import { useState, useMemo } from "react"
 import {
-  Search, MessageCircle, User, UserCheck, AlertCircle,
-  Image as ImageIcon, Mic, Video, FileText, Filter, X, Plus,
+  Search, MessageCircle, AlertCircle,
+  Image as ImageIcon, Mic, Video, FileText, Filter, X, Plus, Users,
 } from "lucide-react"
 import { formatPhoneDisplay } from "@/lib/evolution-api"
 import { NewConversationModal } from "./new-conversation-modal"
+import { lifecycleMeta } from "@/lib/lifecycle"
+import { ChannelIcon } from "@/components/ui/channel-icon"
 import type { ChatConversation } from "@/types/chat"
 
 interface PipelineMini { id: string; name: string; color: string; is_default: boolean }
@@ -92,6 +94,7 @@ export function ConversationList({
     if (agentFilter)   items = items.filter((c) => c.assigned_to === agentFilter)
     if (tagFilter) {
       items = items.filter((c) => {
+        if (!c.contact_id) return false
         const contactTags = tagsByContact[c.contact_id] ?? []
         return contactTags.includes(tagFilter)
       })
@@ -278,15 +281,17 @@ export function ConversationList({
           </div>
         ) : (
           filtered.map((conv) => {
+            const isGroup    = conv.is_group
             const contact    = conv.chat_contacts
-            const isClient   = !!contact?.customers
-            const name       = contact?.customers?.nome_fantasia ?? contact?.customers?.razao_social ?? contact?.push_name ?? formatPhoneDisplay(contact?.phone_number ?? "")
+            const name       = isGroup
+              ? (conv.group_name ?? "Grupo sem nome")
+              : (contact?.customers?.nome_fantasia ?? contact?.customers?.razao_social ?? contact?.push_name ?? formatPhoneDisplay(contact?.phone_number ?? ""))
             const initial    = (contact?.push_name ?? name)?.[0]?.toUpperCase() ?? "?"
             const isActive   = conv.id === activeId
             const hasUnread  = conv.unread_count > 0
             const assignedTo = conv.profiles?.full_name
             const stage      = (conv as any).pipeline_stages ?? stageById[(conv as any).stage_id]
-            const contactTags = (tagsByContact[conv.contact_id] ?? [])
+            const contactTags = (!isGroup && conv.contact_id ? tagsByContact[conv.contact_id] ?? [] : [])
               .map((tid) => tagById[tid])
               .filter(Boolean)
             const isStale     = conv.last_message_at && hoursSince(conv.last_message_at) >= STALE_HOURS_THRESHOLD && conv.status !== "resolved"
@@ -307,9 +312,20 @@ export function ConversationList({
                 {/* Avatar */}
                 <div className="relative shrink-0">
                   <div className={`size-10 rounded-full flex items-center justify-center overflow-hidden ${
-                    isActive ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
+                    isGroup
+                      ? "bg-amber-500 text-white"
+                      : isActive
+                      ? "bg-blue-600 text-white"
+                      : "bg-slate-100 text-slate-600"
                   }`}>
-                    {contact?.profile_pic_url ? (
+                    {isGroup ? (
+                      conv.group_picture ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={conv.group_picture} alt="" className="size-10 object-cover" />
+                      ) : (
+                        <Users className="size-5" />
+                      )
+                    ) : contact?.profile_pic_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img src={contact.profile_pic_url} alt="" className="size-10 object-cover" />
                     ) : (
@@ -336,13 +352,20 @@ export function ConversationList({
 
                   {/* Badges: Cliente/Lead + Stage */}
                   <div className="flex items-center gap-1 flex-wrap mb-1">
-                    {isClient ? (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 text-green-700">
-                        <UserCheck className="size-2.5" /> Cliente
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
-                        <User className="size-2.5" /> Lead
+                    {(() => {
+                      const lc = lifecycleMeta(contact?.lifecycle_stage)
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-0.5 text-[9px] font-semibold px-1.5 py-0.5 rounded-full ${lc.bg} ${lc.text}`}
+                          title={lc.label}
+                        >
+                          <span>{lc.icon}</span> {lc.label}
+                        </span>
+                      )
+                    })()}
+                    {contact?.source && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-white border border-slate-200">
+                        <ChannelIcon source={contact.source} size={11} />
                       </span>
                     )}
                     {stage && (

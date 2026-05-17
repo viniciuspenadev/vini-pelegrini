@@ -42,6 +42,9 @@ export interface Customer {
   suframa:            string | null
   status:             CustomerStatus
   observacoes:        string | null
+  // Tipo (PF/PJ) + extras flexíveis
+  kind:               "B2B" | "B2C"
+  metadata:           Record<string, any>
   created_at:         string
   updated_at:         string
 }

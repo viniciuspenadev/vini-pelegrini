@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase"
-import { Building2, Users, ShoppingCart, TrendingUp, AlertTriangle, Clock } from "lucide-react"
+import { Building2, Users, ShoppingCart, AlertTriangle, Clock, Activity, Wifi, WifiOff } from "lucide-react"
 import Link from "next/link"
 
 const BRL = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })
@@ -20,6 +20,7 @@ export default async function GodDashboardPage() {
     { data: tenants },
     { count: totalUsers },
     { count: totalOrders },
+    { data: instances },
   ] = await Promise.all([
     supabaseAdmin
       .from("tenants")
@@ -32,6 +33,9 @@ export default async function GodDashboardPage() {
     supabaseAdmin
       .from("orders")
       .select("id", { count: "exact", head: true }),
+    supabaseAdmin
+      .from("whatsapp_instances")
+      .select("tenant_id, status, last_heartbeat_at, reconnect_attempts, user_disconnected"),
   ])
 
   const all        = tenants ?? []
@@ -39,18 +43,27 @@ export default async function GodDashboardPage() {
   const activeCount = all.filter((t) => t.status === "active").length
   const suspCount  = all.filter((t) => t.status === "suspended").length
 
+  // Saúde WhatsApp agregada
+  const HOUR = 3_600_000
+  const nowMs = Date.now()
+  const insts = instances ?? []
+  const waHealthy  = insts.filter((i: any) =>
+    i.status === "connected" &&
+    i.last_heartbeat_at &&
+    (nowMs - new Date(i.last_heartbeat_at).getTime()) < HOUR
+  ).length
+  const waDown = insts.filter((i: any) =>
+    i.status === "disconnected" &&
+    (i.user_disconnected || (i.reconnect_attempts ?? 0) >= 3)
+  ).length
+  const waDegraded = insts.length - waHealthy - waDown
+
   const now = new Date()
   const trialsExpiringSoon = all.filter((t) => {
     if (t.status !== "trial" || !t.trial_ends_at) return false
     const days = Math.ceil((new Date(t.trial_ends_at).getTime() - now.getTime()) / 86_400_000)
     return days <= 5 && days >= 0
   })
-  const inactiveTeants = all.filter((t) => {
-    if (t.status === "suspended") return false
-    // sem dados reais de last_activity por enquanto, apenas placeholder
-    return false
-  })
-
   const kpis = [
     { label: "Tenants ativos",    value: activeCount,          icon: Building2,   bg: "bg-green-50",  color: "text-green-600" },
     { label: "Em trial",          value: trialCount,           icon: Clock,       bg: "bg-amber-50",  color: "text-amber-600" },
@@ -81,6 +94,48 @@ export default async function GodDashboardPage() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Saúde WhatsApp da plataforma */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <Activity className="size-4 text-violet-600" />
+              <p className="text-sm font-semibold text-slate-900">Saúde operacional WhatsApp</p>
+            </div>
+            <Link href="/god/saude" className="text-xs font-semibold text-violet-600 hover:text-violet-700">
+              Ver detalhes →
+            </Link>
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-slate-100">
+            <div className="px-5 py-4 flex items-center gap-3">
+              <div className="size-8 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
+                <Wifi className="size-4 text-green-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Saudáveis</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{waHealthy}</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 flex items-center gap-3">
+              <div className="size-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
+                <AlertTriangle className="size-4 text-amber-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Degradados</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{waDegraded}</p>
+              </div>
+            </div>
+            <div className="px-5 py-4 flex items-center gap-3">
+              <div className="size-8 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
+                <WifiOff className="size-4 text-red-600" />
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400">Caídos</p>
+                <p className="text-xl font-bold text-slate-900 tabular-nums">{waDown}</p>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Alertas */}

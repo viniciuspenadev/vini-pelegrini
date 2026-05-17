@@ -5,6 +5,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import { ConversationList } from "@/components/chat/conversation-list"
 import { ChatPanel } from "@/components/chat/chat-panel"
 import { ContactSidebar } from "@/components/chat/contact-sidebar"
+import { PendingGroupsBanner } from "@/components/chat/pending-groups-banner"
 import { MessageCircle, WifiOff, Settings } from "lucide-react"
 import Link from "next/link"
 import {
@@ -20,16 +21,19 @@ import type {
   ChatContact,
   ChatQuickReply,
 } from "@/types/chat"
+import type { SegmentSidebarConfig } from "@/lib/segments/types"
 
 interface CustomerInfo {
-  id:              string
-  razao_social:    string
-  nome_fantasia:   string | null
-  cnpj_cpf:        string
-  comprador_nome:  string | null
+  id:               string
+  razao_social:     string
+  nome_fantasia:    string | null
+  cnpj_cpf:         string
+  comprador_nome:   string | null
   email_financeiro: string | null
-  cidade:          string | null
-  estado:          string | null
+  telefone:         string | null
+  cidade:           string | null
+  estado:           string | null
+  [key: string]: unknown
 }
 
 interface RecentOrder {
@@ -67,6 +71,7 @@ interface Props {
   stages?:            StageMini[]
   tags?:              TagMini[]
   tagsByContact?:     Record<string, string[]>
+  segmentConfig:      SegmentSidebarConfig
 }
 
 export function InboxClient({
@@ -82,6 +87,7 @@ export function InboxClient({
   stages         = [],
   tags           = [],
   tagsByContact  = {},
+  segmentConfig,
 }: Props) {
   const [conversations, setConversations] = useState(initialConversations)
   const [activeId, setActiveId]           = useState<string | null>(null)
@@ -100,7 +106,7 @@ export function InboxClient({
   activeIdRef.current = activeId
 
   const activeConv     = activeId ? conversations.find((c) => c.id === activeId) : null
-  const activeContact  = activeConv ? contacts[activeConv.contact_id] : null
+  const activeContact  = activeConv?.contact_id ? contacts[activeConv.contact_id] : null
   const activeCustomer = activeContact?.customer_id ? customers[activeContact.customer_id] : null
   const activeOrders   = activeContact?.customer_id ? (recentOrders[activeContact.customer_id] ?? []) : []
 
@@ -251,7 +257,9 @@ export function InboxClient({
   }
 
   return (
-    <div className="flex h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden">
+      <PendingGroupsBanner />
+      <div className="flex flex-1 overflow-hidden">
       {/* Left: Conversation list */}
       <div className="w-80 shrink-0">
         <ConversationList
@@ -305,8 +313,10 @@ export function InboxClient({
           tags={tags}
           tagsByContact={tagsByContact}
           agents={agents}
+          segmentConfig={segmentConfig}
         />
       )}
+      </div>
     </div>
   )
 }
