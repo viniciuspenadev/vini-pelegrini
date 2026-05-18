@@ -171,8 +171,30 @@ export interface ExternalAdReply {
   containsAutoReply?: boolean
 }
 
+/**
+ * Snapshot do payload da mensagem CITADA (quando o usuário responde
+ * "marcando" uma mensagem anterior no WhatsApp).
+ * Evolution entrega aqui só o que era essencial pra renderizar o preview.
+ */
+export interface QuotedMessagePayload {
+  conversation?:        string
+  extendedTextMessage?: { text?: string }
+  imageMessage?:        { caption?: string; mimetype?: string }
+  audioMessage?:        { mimetype?: string }
+  videoMessage?:        { caption?: string; mimetype?: string }
+  documentMessage?:     { fileName?: string; mimetype?: string }
+  stickerMessage?:      { mimetype?: string }
+  locationMessage?:     { degreesLatitude?: number; degreesLongitude?: number }
+}
+
 interface MessageContextInfo {
   externalAdReply?: ExternalAdReply
+  /** ID da mensagem que está sendo citada (mesma identidade de msg.key.id). */
+  stanzaId?:        string
+  /** JID do autor da mensagem citada (útil em grupos). */
+  participant?:     string
+  /** Snapshot do conteúdo da mensagem citada — usado pra renderizar o preview. */
+  quotedMessage?:   QuotedMessagePayload
 }
 
 export interface EvolutionMessageData {

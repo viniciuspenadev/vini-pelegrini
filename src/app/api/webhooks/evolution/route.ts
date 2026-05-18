@@ -184,23 +184,146 @@ async function handleMessageUpsert(
       // decision === "monitor" → segue o fluxo abaixo, mas com lógica de grupo
     }
 
-    // fromMe = mensagem enviada pelo número conectado (agente)
-    if (msg.key.fromMe) {
-      if (msg.key.id) {
-        await supabaseAdmin
-          .from("chat_messages")
-          .update({ whatsapp_msg_id: msg.key.id, status: "sent" })
-          .eq("tenant_id", tenantId)
-          .is("whatsapp_msg_id", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-      }
-      continue
-    }
-
     const pushName = msg.pushName ?? null
     const { contentType, content, mediaMimeType, mediaFileName } = extractMessageContent(msg)
     const externalAdReply = extractExternalAdReply(msg)
+    const quoted          = extractQuoted(msg)
+
+    // ═══════════════════════════════════════════════════════════
+    // fromMe = mensagem enviada pelo número conectado (agente)
+    // ═══════════════════════════════════════════════════════════
+    // Dois caminhos:
+    //   A) Mensagem nasceu no CRM → existe linha "órfã" recente sem
+    //      whatsapp_msg_id, fazemos UPDATE pra fechar o ciclo.
+    //   B) Mensagem nasceu DO CELULAR (funcionário respondeu direto pelo
+    //      WhatsApp do número conectado) → criamos linha nova marcada
+    //      como "via_celular: true" pra UI sinalizar.
+    if (msg.key.fromMe) {
+      try {
+        // 1) Idempotência: se já registramos essa mensagem antes, pula.
+        if (msg.key.id) {
+          const { data: existing } = await supabaseAdmin
+            .from("chat_messages")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("whatsapp_msg_id", msg.key.id)
+            .maybeSingle()
+          if (existing) continue
+        }
+
+        // 2) Tenta linkar com mensagem órfã recente (saída pelo CRM).
+        //    Janela apertada (60s) + mesma conversa + sender_type='agent'.
+        let linkedExisting = false
+        if (msg.key.id && !isGroup) {
+          const { data: ct } = await supabaseAdmin
+            .from("chat_contacts")
+            .select("id")
+            .eq("tenant_id", tenantId)
+            .eq("whatsapp_id", jid)
+            .maybeSingle()
+
+          if (ct) {
+            const { data: cv } = await supabaseAdmin
+              .from("chat_conversations")
+              .select("id")
+              .eq("tenant_id", tenantId)
+              .eq("contact_id", ct.id)
+              .order("created_at", { ascending: false })
+              .limit(1)
+              .maybeSingle()
+
+            if (cv) {
+              const sixtySecAgo = new Date(Date.now() - 60_000).toISOString()
+              const { data: matched } = await supabaseAdmin
+                .from("chat_messages")
+                .update({ whatsapp_msg_id: msg.key.id, status: "sent" })
+                .eq("tenant_id", tenantId)
+                .eq("conversation_id", cv.id)
+                .eq("sender_type", "agent")
+                .is("whatsapp_msg_id", null)
+                .gte("created_at", sixtySecAgo)
+                .order("created_at", { ascending: false })
+                .limit(1)
+                .select("id")
+
+              if (matched && matched.length > 0) linkedExisting = true
+            }
+          }
+        }
+        if (linkedExisting) continue
+
+        // 3) Caminho B: mensagem veio do celular. Cria linha nova.
+        let participantJidFromMe: string | null = null
+        let contactFromMe: { id: string } | null = null
+        let convFromMe:   { id: string }
+
+        if (isGroup) {
+          participantJidFromMe = (msg.key as any).participant ?? null
+          const memberPhone = participantJidFromMe ? jidToPhone(participantJidFromMe) : ""
+          if (participantJidFromMe && memberPhone) {
+            contactFromMe = await findOrCreateContact(tenantId, participantJidFromMe, memberPhone, null, instance)
+          }
+          convFromMe = await findOrCreateGroupConversation(tenantId, instanceId, jid, null)
+        } else {
+          const phone = jidToPhone(jid)
+          contactFromMe = await findOrCreateContact(tenantId, jid, phone, null, instance)
+          convFromMe    = await findOrCreateConversation(tenantId, contactFromMe.id, instanceId)
+        }
+
+        // Mídia (se houver): mesmo pipeline de download
+        let finalMediaUrlFromMe: string | null = null
+        let finalMimeFromMe:     string | null = mediaMimeType
+        const metaFromMe: Record<string, unknown> = { via_celular: true }
+        if (externalAdReply) metaFromMe.external_ad_reply = externalAdReply
+        if (quoted)          metaFromMe.quoted            = quoted
+
+        const isMediaFromMe = contentType === "image" || contentType === "audio" || contentType === "video" || contentType === "document"
+        if (isMediaFromMe) {
+          const stored = await downloadAndStoreMedia(instance, convFromMe.id, msg, contentType, mediaFileName)
+          if ("error" in stored) {
+            metaFromMe.media_error    = stored.error
+            metaFromMe.media_error_at = new Date().toISOString()
+          } else {
+            finalMediaUrlFromMe        = stored.signedUrl
+            finalMimeFromMe            = stored.mimeType ?? mediaMimeType
+            metaFromMe.storage_path    = stored.storagePath
+          }
+        }
+
+        await supabaseAdmin.from("chat_messages").insert({
+          conversation_id:       convFromMe.id,
+          tenant_id:             tenantId,
+          sender_type:           "agent",
+          sender_id:             null,   // celular não traz user id — UI mostra badge "via celular"
+          content_type:          contentType,
+          content,
+          media_url:             finalMediaUrlFromMe,
+          media_mime_type:       finalMimeFromMe,
+          media_file_name:       mediaFileName,
+          whatsapp_msg_id:       msg.key.id ?? null,
+          status:                "sent",
+          is_private_note:       false,
+          metadata:              metaFromMe,
+          group_participant_jid: isGroup ? participantJidFromMe : null,
+        })
+
+        // Atualiza preview da conversa (sem mexer no unread — saída não conta como pendente)
+        const previewFromMe = content ? content.substring(0, 100) : `📎 ${contentType}`
+        await supabaseAdmin
+          .from("chat_conversations")
+          .update({
+            last_message_at:      new Date().toISOString(),
+            last_message_preview: previewFromMe,
+            updated_at:           new Date().toISOString(),
+          })
+          .eq("id", convFromMe.id)
+      } catch (err) {
+        // Defensivo: webhook em produção, qualquer erro na nova lógica vira log
+        // pra não interromper o processamento das próximas mensagens.
+        console.error("[evolution-webhook] fromMe handler failed:", err)
+      }
+      continue
+    }
 
     let contact:      { id: string; customer_id?: string | null } | null = null
     let conversation: { id: string; status: string; unread_count: number }
@@ -228,6 +351,10 @@ async function handleMessageUpsert(
 
     if (externalAdReply) {
       metadata.external_ad_reply = externalAdReply
+    }
+
+    if (quoted) {
+      metadata.quoted = quoted
     }
 
     const isMedia = contentType === "image" || contentType === "audio" || contentType === "video" || contentType === "document"
@@ -341,13 +468,14 @@ async function handleConnectionUpdate(instanceId: string, data: unknown) {
 // ── Helpers ─────────────────────────────────────────────────
 
 /**
- * Procura `contextInfo.externalAdReply` em qualquer tipo de mensagem.
- * Existe quando o lead entrou via Click-to-WhatsApp Ad da Meta.
+ * Procura `contextInfo` em qualquer tipo de mensagem.
+ * Centralizado pra ser usado tanto pelo externalAdReply (CTWA) quanto
+ * pelo quotedMessage (mensagem citada/reply).
  */
-function extractExternalAdReply(msg: EvolutionMessageData) {
+function extractContextInfo(msg: EvolutionMessageData) {
   const m = msg.message
   if (!m) return null
-  const ctx =
+  return (
     m.extendedTextMessage?.contextInfo ??
     m.imageMessage?.contextInfo ??
     m.videoMessage?.contextInfo ??
@@ -356,7 +484,45 @@ function extractExternalAdReply(msg: EvolutionMessageData) {
     m.stickerMessage?.contextInfo ??
     m.locationMessage?.contextInfo ??
     null
-  return ctx?.externalAdReply ?? null
+  )
+}
+
+/**
+ * Procura `externalAdReply` no contextInfo.
+ * Existe quando o lead entrou via Click-to-WhatsApp Ad da Meta.
+ */
+function extractExternalAdReply(msg: EvolutionMessageData) {
+  return extractContextInfo(msg)?.externalAdReply ?? null
+}
+
+/**
+ * Procura mensagem citada (cliente respondeu "marcando" outra mensagem).
+ * Retorna { msg_id, preview } pronto pra gravar em chat_messages.metadata.quoted.
+ * Tudo opcional — sem dados não retorna nada.
+ */
+function extractQuoted(msg: EvolutionMessageData) {
+  const ctx = extractContextInfo(msg)
+  if (!ctx?.stanzaId && !ctx?.quotedMessage) return null
+
+  // Snapshot textual leve do que estava sendo citado.
+  const q = ctx.quotedMessage ?? {}
+  let preview: string | null = null
+  let kind:    string | null = null
+  if (q.conversation)                            { preview = q.conversation; kind = "text" }
+  else if (q.extendedTextMessage?.text)          { preview = q.extendedTextMessage.text; kind = "text" }
+  else if (q.imageMessage)                       { preview = q.imageMessage.caption || "📷 Imagem"; kind = "image" }
+  else if (q.videoMessage)                       { preview = q.videoMessage.caption || "🎥 Vídeo"; kind = "video" }
+  else if (q.audioMessage)                       { preview = "🎧 Áudio"; kind = "audio" }
+  else if (q.documentMessage)                    { preview = q.documentMessage.fileName || "📎 Documento"; kind = "document" }
+  else if (q.stickerMessage)                     { preview = "Sticker"; kind = "sticker" }
+  else if (q.locationMessage)                    { preview = "📍 Localização"; kind = "location" }
+
+  return {
+    msg_id:      ctx.stanzaId ?? null,
+    participant: ctx.participant ?? null,
+    kind,
+    preview:     preview?.slice(0, 200) ?? null,
+  }
 }
 
 function extractMessageContent(msg: EvolutionMessageData) {

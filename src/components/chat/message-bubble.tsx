@@ -3,17 +3,39 @@
 import { useState } from "react"
 import {
   Check, CheckCheck, Clock, AlertCircle, Lock, FileText, MapPin, Mic, Video,
-  Image as ImageIcon, Download, X, ImageOff,
+  Image as ImageIcon, Download, X, ImageOff, Reply, Smartphone,
 } from "lucide-react"
 import type { ChatMessage, ExternalAdReply } from "@/types/chat"
 import { AudioPlayer } from "./audio-player"
 import { Megaphone, ExternalLink } from "lucide-react"
+
+interface QuotedMeta {
+  msg_id:      string | null
+  kind?:       string | null
+  participant?: string | null
+  preview?:    string | null
+}
+
+interface MessageMeta {
+  external_ad_reply?: ExternalAdReply
+  quoted?:            QuotedMeta
+  via_celular?:       boolean
+}
 
 interface Props {
   message:    ChatMessage
   agentName?: string | null
   /** Para conversas de grupo: nome do participante (se conhecido) ou número formatado. */
   senderLabel?: string | null
+}
+
+function scrollToQuoted(msgId: string) {
+  if (typeof document === "undefined") return
+  const el = document.querySelector(`[data-wa-id="${CSS.escape(msgId)}"]`)
+  if (!el) return
+  el.scrollIntoView({ behavior: "smooth", block: "center" })
+  el.classList.add("ring-2", "ring-blue-400", "ring-offset-2", "rounded-2xl")
+  setTimeout(() => el.classList.remove("ring-2", "ring-blue-400", "ring-offset-2"), 1600)
 }
 
 export function MessageBubble({ message, agentName, senderLabel }: Props) {
@@ -67,10 +89,17 @@ export function MessageBubble({ message, agentName, senderLabel }: Props) {
   // Media content indicator
   const mediaIcon = getMediaIcon(message.content_type)
 
+  // Metadados estendidos
+  const meta         = (message.metadata ?? {}) as MessageMeta
+  const quoted       = meta.quoted ?? null
+  const adReply      = meta.external_ad_reply
+  const sentFromPhone = !isIncoming && !!meta.via_celular
+
   return (
     <div className={`flex px-4 py-0.5 ${isIncoming ? "justify-start" : "justify-end"}`}>
       <div
-        className={`max-w-[75%] rounded-2xl px-4 py-2.5 ${
+        data-wa-id={message.whatsapp_msg_id ?? undefined}
+        className={`max-w-[75%] rounded-2xl px-4 py-2.5 transition-shadow ${
           isIncoming
             ? "bg-white border border-slate-200 rounded-bl-md shadow-sm"
             : "bg-blue-600 text-white rounded-br-md shadow-sm shadow-blue-600/20"
@@ -83,15 +112,26 @@ export function MessageBubble({ message, agentName, senderLabel }: Props) {
           </p>
         )}
 
-        {/* Agent name for outgoing */}
-        {!isIncoming && agentName && (
-          <p className="text-[10px] font-medium text-blue-200 mb-0.5">
-            {agentName}
+        {/* Agent name + badge "via celular" pra saída */}
+        {!isIncoming && (agentName || sentFromPhone) && (
+          <p className="text-[10px] font-medium text-blue-200 mb-0.5 flex items-center gap-1.5">
+            {agentName && <span>{agentName}</span>}
+            {sentFromPhone && (
+              <span
+                className="inline-flex items-center gap-0.5 bg-blue-700/50 text-blue-100 px-1.5 py-0.5 rounded text-[9px] font-semibold uppercase tracking-wider"
+                title="Mensagem enviada direto pelo celular conectado, fora do CRM"
+              >
+                <Smartphone className="size-2.5" /> via celular
+              </span>
+            )}
           </p>
         )}
 
+        {/* Citação — quando esta mensagem é reply de outra */}
+        <QuotedReplyCard quoted={quoted} incoming={isIncoming} />
+
         {/* Click-to-WhatsApp Ad — origem do lead */}
-        <AdReplyCard ad={(message.metadata as { external_ad_reply?: ExternalAdReply } | null | undefined)?.external_ad_reply} />
+        <AdReplyCard ad={adReply} />
 
         {/* Mídia renderizada de verdade */}
         {message.content_type === "image" && message.media_url && !imageBroken && (
@@ -277,6 +317,44 @@ function getMediaIcon(type: string) {
     default:
       return null
   }
+}
+
+/**
+ * Bloco da mensagem CITADA (quando esta mensagem é uma "reply" de outra).
+ * Visual inspirado no WhatsApp/Chatwoot: border-left colorida + preview do conteúdo.
+ * Click rola até a mensagem original com highlight.
+ */
+function QuotedReplyCard({ quoted, incoming }: { quoted: QuotedMeta | null; incoming: boolean }) {
+  if (!quoted || !quoted.preview) return null
+
+  const handleClick = () => {
+    if (quoted.msg_id) scrollToQuoted(quoted.msg_id)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={!quoted.msg_id}
+      className={`block w-full text-left -mx-2 mb-1.5 px-2.5 py-1.5 rounded-md border-l-4 transition-colors ${
+        incoming
+          ? "bg-slate-50 border-l-blue-400 hover:bg-slate-100"
+          : "bg-blue-700/40 border-l-blue-200 hover:bg-blue-700/60"
+      } ${quoted.msg_id ? "cursor-pointer" : "cursor-default"}`}
+    >
+      <p className={`text-[10px] font-semibold uppercase tracking-wider mb-0.5 flex items-center gap-1 ${
+        incoming ? "text-blue-600" : "text-blue-100"
+      }`}>
+        <Reply className="size-2.5" />
+        Em resposta a
+      </p>
+      <p className={`text-xs leading-snug line-clamp-2 ${
+        incoming ? "text-slate-700" : "text-blue-50"
+      }`}>
+        {quoted.preview}
+      </p>
+    </button>
+  )
 }
 
 /**
