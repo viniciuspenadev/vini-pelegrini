@@ -5,8 +5,9 @@ import {
   Check, CheckCheck, Clock, AlertCircle, Lock, FileText, MapPin, Mic, Video,
   Image as ImageIcon, Download, X, ImageOff,
 } from "lucide-react"
-import type { ChatMessage } from "@/types/chat"
+import type { ChatMessage, ExternalAdReply } from "@/types/chat"
 import { AudioPlayer } from "./audio-player"
+import { Megaphone, ExternalLink } from "lucide-react"
 
 interface Props {
   message:    ChatMessage
@@ -88,6 +89,9 @@ export function MessageBubble({ message, agentName, senderLabel }: Props) {
             {agentName}
           </p>
         )}
+
+        {/* Click-to-WhatsApp Ad — origem do lead */}
+        <AdReplyCard ad={(message.metadata as { external_ad_reply?: ExternalAdReply } | null | undefined)?.external_ad_reply} />
 
         {/* Mídia renderizada de verdade */}
         {message.content_type === "image" && message.media_url && !imageBroken && (
@@ -273,4 +277,65 @@ function getMediaIcon(type: string) {
     default:
       return null
   }
+}
+
+/**
+ * Card mostrando que a mensagem veio de um Click-to-WhatsApp Ad da Meta.
+ * Renderiza apenas se a 1ª mensagem trouxe externalAdReply no contextInfo.
+ */
+function AdReplyCard({ ad }: { ad: ExternalAdReply | undefined }) {
+  if (!ad) return null
+
+  const thumb = ad.thumbnailUrl
+    ?? (ad.thumbnail ? `data:image/jpeg;base64,${ad.thumbnail}` : null)
+
+  return (
+    <div className="-mx-2 -mt-1.5 mb-1.5 rounded-lg overflow-hidden border border-slate-200 bg-slate-50/60">
+      <div className="flex items-center gap-1.5 px-2.5 pt-2 pb-1">
+        <Megaphone className="size-3 text-blue-600" />
+        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
+          Veio do anúncio
+        </span>
+      </div>
+      <div className="flex gap-2.5 px-2.5 pb-2.5">
+        {thumb && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={thumb}
+            alt=""
+            className="size-14 rounded-md object-cover shrink-0 border border-slate-200"
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          {ad.title && (
+            <p className="text-xs font-bold text-slate-900 leading-tight line-clamp-2">
+              {ad.title}
+            </p>
+          )}
+          {ad.body && (
+            <p className="text-[11px] text-slate-600 leading-snug mt-0.5 line-clamp-2">
+              {ad.body}
+            </p>
+          )}
+          {ad.sourceUrl && (
+            <a
+              href={ad.sourceUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-blue-600 hover:text-blue-700"
+            >
+              Abrir anúncio <ExternalLink className="size-2.5" />
+            </a>
+          )}
+        </div>
+      </div>
+      {ad.sourceId && (
+        <div className="px-2.5 py-1 bg-slate-100 border-t border-slate-200">
+          <p className="text-[9px] font-mono text-slate-500 truncate" title={`Ad ID: ${ad.sourceId}`}>
+            ID: {ad.sourceId}
+          </p>
+        </div>
+      )}
+    </div>
+  )
 }

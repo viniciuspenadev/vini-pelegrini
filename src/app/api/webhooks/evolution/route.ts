@@ -200,6 +200,7 @@ async function handleMessageUpsert(
 
     const pushName = msg.pushName ?? null
     const { contentType, content, mediaMimeType, mediaFileName } = extractMessageContent(msg)
+    const externalAdReply = extractExternalAdReply(msg)
 
     let contact:      { id: string; customer_id?: string | null } | null = null
     let conversation: { id: string; status: string; unread_count: number }
@@ -224,6 +225,10 @@ async function handleMessageUpsert(
     let finalMediaUrl: string | null = null
     let finalMimeType: string | null = mediaMimeType
     const metadata: Record<string, unknown> = {}
+
+    if (externalAdReply) {
+      metadata.external_ad_reply = externalAdReply
+    }
 
     const isMedia = contentType === "image" || contentType === "audio" || contentType === "video" || contentType === "document"
     if (isMedia) {
@@ -334,6 +339,25 @@ async function handleConnectionUpdate(instanceId: string, data: unknown) {
 }
 
 // ── Helpers ─────────────────────────────────────────────────
+
+/**
+ * Procura `contextInfo.externalAdReply` em qualquer tipo de mensagem.
+ * Existe quando o lead entrou via Click-to-WhatsApp Ad da Meta.
+ */
+function extractExternalAdReply(msg: EvolutionMessageData) {
+  const m = msg.message
+  if (!m) return null
+  const ctx =
+    m.extendedTextMessage?.contextInfo ??
+    m.imageMessage?.contextInfo ??
+    m.videoMessage?.contextInfo ??
+    m.audioMessage?.contextInfo ??
+    m.documentMessage?.contextInfo ??
+    m.stickerMessage?.contextInfo ??
+    m.locationMessage?.contextInfo ??
+    null
+  return ctx?.externalAdReply ?? null
+}
 
 function extractMessageContent(msg: EvolutionMessageData) {
   const m = msg.message
@@ -519,14 +543,15 @@ async function findOrCreateConversation(
       const { data: newTriage } = await supabaseAdmin
         .from("pipeline_stages")
         .insert({
-          tenant_id:   tenantId,
-          pipeline_id: pipelineId,
-          name:        "Triagem",
-          color:       "#94a3b8",
-          position:    -1,
-          is_triage:   true,
-          is_won:      false,
-          is_lost:     false,
+          tenant_id:      tenantId,
+          pipeline_id:    pipelineId,
+          name:           "Triagem",
+          color:          "#94a3b8",
+          position:       -1,
+          is_triage:      true,
+          is_won:         false,
+          is_lost:        false,
+          show_in_kanban: false,
         })
         .select("id")
         .single()

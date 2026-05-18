@@ -1269,8 +1269,12 @@ export async function refreshInbox() {
       *,
       chat_contacts (
         id, tenant_id, customer_id, whatsapp_id, phone_number, push_name,
-        profile_pic_url, is_blocked, tags, notes, created_at, updated_at,
-        customers ( razao_social, nome_fantasia )
+        profile_pic_url, is_blocked, tags, notes, source, lifecycle_stage,
+        created_at, updated_at,
+        customers (
+          id, razao_social, nome_fantasia, cnpj_cpf, kind,
+          cep, logradouro, numero, complemento, bairro, cidade, estado
+        )
       ),
       profiles ( full_name )
     `)

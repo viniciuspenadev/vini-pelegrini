@@ -8,6 +8,7 @@ import bcrypt from "bcryptjs"
 import { filterModulesBySegment, getDefaultModulesForSegment } from "@/lib/modules-catalog"
 import { buildTemplate } from "@/lib/financial/default-categories"
 import { getPipelineTemplate } from "@/lib/marketing/default-pipelines"
+import { getProjectStatusesTemplate } from "@/lib/moveis/default-project-statuses"
 
 async function requireGodMode() {
   const session = await auth()
@@ -137,6 +138,7 @@ async function bootstrapTenantDefaults(tenantId: string, segment: string, create
         is_won:          s.is_won    ?? false,
         is_lost:         s.is_lost   ?? false,
         is_triage:       s.is_triage ?? false,
+        show_in_kanban:  s.show_in_kanban ?? !(s.is_triage ?? false),
       }))
       await supabaseAdmin.from("pipeline_stages").insert(stages)
 
@@ -146,7 +148,30 @@ async function bootstrapTenantDefaults(tenantId: string, segment: string, create
     }
   }
 
-  // ── 2. Plano de contas (categorias financeiras) ────────────
+  // ── 2. Statuses de Projetos (só pra segmentos que usam o módulo)
+  if (segment === "moveis") {
+    const { count: statusCount } = await supabaseAdmin
+      .from("project_statuses")
+      .select("id", { count: "exact", head: true })
+      .eq("tenant_id", tenantId)
+
+    if ((statusCount ?? 0) === 0) {
+      const statusTpl = getProjectStatusesTemplate(segment)
+      const statuses  = statusTpl.map((s, i) => ({
+        tenant_id:    tenantId,
+        name:         s.name,
+        color:        s.color,
+        position:     i,
+        is_initial:   s.is_initial   ?? false,
+        is_won:       s.is_won       ?? false,
+        is_completed: s.is_completed ?? false,
+        is_cancelled: s.is_cancelled ?? false,
+      }))
+      await supabaseAdmin.from("project_statuses").insert(statuses)
+    }
+  }
+
+  // ── 3. Plano de contas (categorias financeiras) ────────────
   const { count: catCount } = await supabaseAdmin
     .from("financial_categories")
     .select("id", { count: "exact", head: true })

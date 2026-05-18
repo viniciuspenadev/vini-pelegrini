@@ -13,6 +13,7 @@ export interface StageTemplate {
   is_won?:         boolean
   is_lost?:        boolean
   is_triage?:      boolean
+  show_in_kanban?: boolean   // se omitido: triage=false, demais=true
 }
 
 export interface PipelineTemplate {
@@ -54,25 +55,25 @@ const PESCADOS: PipelineTemplate = {
 }
 
 // ── Móveis planejados ───────────────────────────────────────────
-// Funil real do mercado: 12 estágios, do primeiro contato à instalação.
-// Pode ser editado/customizado depois pelo tenant em /marketing/pipeline/configuracao.
+// Pipeline curto de ATENDIMENTO/CONVERSÃO no chat. Foco: "esse lead
+// vai virar projeto?". A execução real (medição → 3D → contrato →
+// produção → instalação) vive em `projects` com seus próprios
+// statuses (`project_statuses`).
+//
+// Quando o vendedor arrasta a conversa para o estágio "Convertido"
+// (is_won), o sistema cria automaticamente um projeto vinculado.
+// Tenant pode customizar livremente em /marketing/pipeline/configuracao.
 const MOVEIS: PipelineTemplate = {
-  name:        "Vendas Móveis Planejados",
-  description: "Funil completo — da captação à instalação final",
+  name:        "Atendimento Móveis",
+  description: "Funil de atendimento e conversão — da captação ao projeto",
   color:       "#92400E",
   stages: [
-    { name: "Triagem",               color: "#94A3B8", probability_pct: 0,   is_triage: true },
-    { name: "Showroom agendado",     color: "#3B82F6", probability_pct: 15 },
-    { name: "Pós-visita",            color: "#06B6D4", probability_pct: 25 },
-    { name: "Em medição",            color: "#0EA5E9", probability_pct: 35 },
-    { name: "3D em desenvolvimento", color: "#8B5CF6", probability_pct: 45 },
-    { name: "3D aprovado",           color: "#A855F7", probability_pct: 60 },
-    { name: "Contrato assinado",     color: "#F59E0B", probability_pct: 75 },
-    { name: "Sinal pago",            color: "#EAB308", probability_pct: 85 },
-    { name: "Em produção",           color: "#84CC16", probability_pct: 95 },
-    { name: "Pronto p/ entrega",     color: "#22C55E", probability_pct: 98 },
-    { name: "Instalado",             color: "#10B981", probability_pct: 100, is_won: true  },
-    { name: "Perdido",               color: "#EF4444", probability_pct: 0,   is_lost: true },
+    { name: "Triagem",              color: "#94A3B8", probability_pct: 0,   is_triage: true },
+    { name: "Lead novo",            color: "#3B82F6", probability_pct: 10 },
+    { name: "Showroom agendado",    color: "#06B6D4", probability_pct: 30 },
+    { name: "Pós-visita",           color: "#0EA5E9", probability_pct: 50 },
+    { name: "Convertido em projeto", color: "#10B981", probability_pct: 100, is_won: true  },
+    { name: "Perdido",              color: "#EF4444", probability_pct: 0,   is_lost: true },
   ],
 }
 

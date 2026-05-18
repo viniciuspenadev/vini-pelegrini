@@ -5,6 +5,7 @@ import { StatusBadge } from "@/components/ui/status-badge"
 import { LinkButton } from "@/components/ui/link-button"
 import { RevenueChart } from "@/components/charts/revenue-chart"
 import { RankingBars } from "@/components/charts/ranking-bars"
+import { DashboardMoveis } from "@/components/dashboard/dashboard-moveis"
 import {
   ChevronRight, Plus, TrendingUp, ShoppingCart, Users, Package,
   ArrowRight,
@@ -49,6 +50,19 @@ export default async function DashboardPage() {
 
   const session        = await auth()
   const tenantId       = session!.user.tenantId
+
+  // Roteamento por segmento — Móveis tem dashboard próprio (KPIs/funil de projetos),
+  // demais segmentos seguem com o dashboard padrão de pedidos abaixo.
+  const { data: tenant } = await supabaseAdmin
+    .from("tenants")
+    .select("segment")
+    .eq("id", tenantId)
+    .single()
+
+  if (tenant?.segment === "moveis") {
+    return <DashboardMoveis />
+  }
+
   const userId         = session!.user.id
   const role           = session!.user.role
   const firstName      = session!.user.name?.split(" ")[0] ?? "Usuário"
@@ -279,8 +293,8 @@ export default async function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
           {/* Area chart — 2/3 */}
-          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
-            <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100">
+          <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden flex flex-col">
+            <div className="flex items-start justify-between px-5 pt-5 pb-4 border-b border-slate-100 flex-none">
               <div>
                 <p className="text-sm font-semibold text-slate-900">
                   {isVendedor ? "Minha receita" : "Receita total"}
@@ -292,8 +306,8 @@ export default async function DashboardPage() {
                 <p className="text-[11px] text-slate-400 mt-1">este mês</p>
               </div>
             </div>
-            <div className="px-2 pt-3 pb-4">
-              <RevenueChart data={revenueByDay} />
+            <div className="px-2 pt-3 pb-4 flex-1 min-h-[280px]">
+              <RevenueChart data={revenueByDay} height="100%" />
             </div>
           </div>
 

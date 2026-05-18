@@ -58,11 +58,11 @@ export default async function PipelinePage({
   const isAdminOrOwner = ["owner", "admin"].includes(session.user.role)
   const canSeeAll      = isAdminOrOwner || (profile?.view_all_conversations ?? false)
 
-  // Busca conversas do pipeline ATIVAS (não won, não lost, não triagem)
-  // O kanban principal só mostra deals em andamento. Triagem fica no Inbox;
+  // Busca conversas do pipeline ATIVAS (não won, não lost, e visíveis no Kanban)
+  // show_in_kanban=false esconde o estágio (ex: Triagem por padrão, etapas internas).
   // won/lost ficam em aba "Histórico" (futuro).
   const activeStageIds = (stages ?? [])
-    .filter((s) => !s.is_won && !s.is_lost && !s.is_triage)
+    .filter((s) => !s.is_won && !s.is_lost && (s.show_in_kanban ?? true))
     .map((s) => s.id)
 
   let convQuery = supabaseAdmin
@@ -183,7 +183,7 @@ export default async function PipelinePage({
 
       <div className="p-4">
         <ConversationKanban
-          stages={(stages ?? []).filter((s) => !s.is_triage) as any}
+          stages={(stages ?? []).filter((s) => s.show_in_kanban ?? true) as any}
           conversations={(conversations ?? []) as any}
           orderStats={orderStatsByCustomer}
         />

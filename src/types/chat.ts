@@ -154,6 +154,27 @@ export interface EvolutionWebhookPayload {
   data:     Record<string, unknown>
 }
 
+/**
+ * Bloco que a Meta anexa na 1ª mensagem quando o lead entra via Click-to-WhatsApp Ad.
+ * Vive em `message.<tipo>.contextInfo.externalAdReply`.
+ */
+export interface ExternalAdReply {
+  sourceType?:      string   // "ad"
+  sourceId?:        string   // ID do anúncio no Ads Manager (FB)
+  sourceUrl?:       string   // URL do anúncio (fb.me/...)
+  title?:           string   // headline do criativo
+  body?:            string   // corpo do criativo
+  mediaType?:       string   // "image" | "video"
+  thumbnailUrl?:    string
+  thumbnail?:       string   // base64 fallback
+  ctwaClid?:        string   // click ID — usado pra Conversions API
+  containsAutoReply?: boolean
+}
+
+interface MessageContextInfo {
+  externalAdReply?: ExternalAdReply
+}
+
 export interface EvolutionMessageData {
   key: {
     remoteJid:  string
@@ -163,13 +184,13 @@ export interface EvolutionMessageData {
   pushName?:    string
   message?: {
     conversation?:          string
-    extendedTextMessage?:   { text: string }
-    imageMessage?:          { caption?: string; mimetype?: string; url?: string }
-    audioMessage?:          { mimetype?: string; url?: string }
-    videoMessage?:          { caption?: string; mimetype?: string; url?: string }
-    documentMessage?:       { fileName?: string; mimetype?: string; url?: string; caption?: string }
-    stickerMessage?:        { mimetype?: string }
-    locationMessage?:       { degreesLatitude: number; degreesLongitude: number }
+    extendedTextMessage?:   { text: string; contextInfo?: MessageContextInfo }
+    imageMessage?:          { caption?: string; mimetype?: string; url?: string; contextInfo?: MessageContextInfo }
+    audioMessage?:          { mimetype?: string; url?: string; contextInfo?: MessageContextInfo }
+    videoMessage?:          { caption?: string; mimetype?: string; url?: string; contextInfo?: MessageContextInfo }
+    documentMessage?:       { fileName?: string; mimetype?: string; url?: string; caption?: string; contextInfo?: MessageContextInfo }
+    stickerMessage?:        { mimetype?: string; contextInfo?: MessageContextInfo }
+    locationMessage?:       { degreesLatitude: number; degreesLongitude: number; contextInfo?: MessageContextInfo }
     reactionMessage?:       { text: string; key: { id: string } }
   }
   messageType?:  string

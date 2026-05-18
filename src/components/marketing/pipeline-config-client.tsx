@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react"
 import {
   Plus, Edit2, Trash2, Star, Loader2, X, Check, GripVertical,
-  Trophy, XCircle, AlertCircle,
+  Trophy, XCircle, AlertCircle, Eye, EyeOff,
 } from "lucide-react"
 import {
   createPipeline, updatePipeline, deletePipeline, setDefaultPipeline,
@@ -29,6 +29,8 @@ interface Stage {
   probability_pct: number
   is_won:          boolean
   is_lost:         boolean
+  is_triage?:      boolean
+  show_in_kanban?: boolean
 }
 
 interface Props {
@@ -255,6 +257,14 @@ function PipelineCard({
                 <span className="text-sm font-medium text-slate-900 flex-1 truncate">{stage.name}</span>
                 {stage.is_won  && <Trophy className="size-3 text-amber-500" />}
                 {stage.is_lost && <XCircle className="size-3 text-red-500" />}
+                {stage.show_in_kanban === false && (
+                  <span
+                    title="Não aparece no Kanban"
+                    className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full"
+                  >
+                    <EyeOff className="size-2.5" /> Oculto
+                  </span>
+                )}
                 <span className="text-[10px] font-semibold text-slate-500 tabular-nums">{stage.probability_pct}%</span>
                 {(stageCount[stage.id] ?? 0) > 0 && (
                   <span className="text-[10px] text-slate-400 bg-white border border-slate-200 rounded-full px-1.5 py-0.5">
@@ -326,12 +336,13 @@ function StageEditInline({
   const [probability, setProb]        = useState(stage.probability_pct)
   const [isWon, setWon]               = useState(stage.is_won)
   const [isLost, setLost]             = useState(stage.is_lost)
+  const [showInKanban, setShowKan]    = useState(stage.show_in_kanban ?? true)
   const [pending, startTransition]    = useTransition()
 
   function save() {
     startTransition(async () => {
       try {
-        const data = { name, color, probability_pct: probability, is_won: isWon, is_lost: isLost }
+        const data = { name, color, probability_pct: probability, is_won: isWon, is_lost: isLost, show_in_kanban: showInKanban }
         await updateStage(stage.id, data)
         onSaved(data)
       } catch (err: any) { alert(err.message) }
@@ -353,6 +364,13 @@ function StageEditInline({
         <label className="flex items-center gap-0.5 text-[10px] text-red-600">
           <input type="checkbox" checked={isLost} onChange={(e) => { setLost(e.target.checked); if (e.target.checked) setWon(false) }} className="size-3" />
           <XCircle className="size-2.5" />
+        </label>
+        <label
+          className={`flex items-center gap-0.5 text-[10px] ${showInKanban ? "text-blue-600" : "text-slate-400"}`}
+          title="Mostrar este estágio no Kanban"
+        >
+          <input type="checkbox" checked={showInKanban} onChange={(e) => setShowKan(e.target.checked)} className="size-3" />
+          {showInKanban ? <Eye className="size-2.5" /> : <EyeOff className="size-2.5" />}
         </label>
         <button onClick={save} disabled={pending} className="size-6 rounded text-green-600 hover:bg-green-50 flex items-center justify-center">
           {pending ? <Loader2 className="size-3 animate-spin" /> : <Check className="size-3" />}

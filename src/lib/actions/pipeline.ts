@@ -57,6 +57,7 @@ export async function ensurePipelineBootstrap(tenantId: string, segment: string 
     is_won:          s.is_won    ?? false,
     is_lost:         s.is_lost   ?? false,
     is_triage:       s.is_triage ?? false,
+    show_in_kanban:  s.show_in_kanban ?? !(s.is_triage ?? false),
   }))
 
   await supabaseAdmin.from("pipeline_stages").insert(stages)
@@ -171,7 +172,7 @@ export async function setDefaultPipeline(id: string) {
 // ═══════════════════════════════════════════════════════════════
 // CRUD Stages
 // ═══════════════════════════════════════════════════════════════
-export async function createStage(pipelineId: string, data: { name: string; color?: string; probability_pct?: number; is_won?: boolean; is_lost?: boolean }) {
+export async function createStage(pipelineId: string, data: { name: string; color?: string; probability_pct?: number; is_won?: boolean; is_lost?: boolean; show_in_kanban?: boolean }) {
   const session = await requireAdmin()
 
   const { data: last } = await supabaseAdmin
@@ -191,6 +192,7 @@ export async function createStage(pipelineId: string, data: { name: string; colo
     probability_pct: data.probability_pct ?? 50,
     is_won:          data.is_won ?? false,
     is_lost:         data.is_lost ?? false,
+    show_in_kanban:  data.show_in_kanban ?? true,
   })
 
   if (error) throw new Error(error.message)
@@ -198,7 +200,7 @@ export async function createStage(pipelineId: string, data: { name: string; colo
   revalidatePath("/marketing/pipeline/configuracao")
 }
 
-export async function updateStage(id: string, data: Partial<{ name: string; color: string; probability_pct: number; position: number; is_won: boolean; is_lost: boolean }>) {
+export async function updateStage(id: string, data: Partial<{ name: string; color: string; probability_pct: number; position: number; is_won: boolean; is_lost: boolean; show_in_kanban: boolean }>) {
   const session = await requireAdmin()
 
   const { error } = await supabaseAdmin

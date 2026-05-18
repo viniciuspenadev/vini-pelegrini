@@ -32,6 +32,7 @@ import {
   addConversationParticipant,
   removeConversationParticipant,
 } from "@/lib/actions/chat"
+import { ConvertToProjectModal, type ConvertModalCustomer } from "@/components/moveis/convert-to-project-modal"
 import {
   moveConversation,
   updateConversationDealInfo,
@@ -693,6 +694,30 @@ export function ContactSidebar({
 }: Props) {
   const [, startTransition] = useTransition()
   const [showActions, setShowActions] = useState(false)
+  const [showCreateProject, setShowCreateProject] = useState(false)
+
+  const isMoveis = segmentConfig.segment === "moveis"
+
+  // Adapta CustomerInfo (sidebar) → ConvertModalCustomer (modal). Campos extras
+  // são acessados via index signature do `[key: string]: unknown` em CustomerInfo.
+  function customerForConversionModal(): ConvertModalCustomer | null {
+    if (!customer) return null
+    const c = customer as Record<string, unknown>
+    return {
+      id:            customer.id,
+      razao_social:  customer.razao_social ?? null,
+      nome_fantasia: customer.nome_fantasia ?? null,
+      cnpj_cpf:      customer.cnpj_cpf ?? null,
+      kind:          (c.kind as "B2B" | "B2C" | null) ?? null,
+      cep:           (c.cep         as string | null) ?? null,
+      logradouro:    (c.logradouro  as string | null) ?? null,
+      numero:        (c.numero      as string | null) ?? null,
+      complemento:   (c.complemento as string | null) ?? null,
+      bairro:        (c.bairro      as string | null) ?? null,
+      cidade:        customer.cidade ?? null,
+      estado:        customer.estado ?? null,
+    }
+  }
 
   function handleBlock() {
     if (!confirm(`${contact.is_blocked ? "Desbloquear" : "Bloquear"} este contato?`)) return
@@ -848,11 +873,23 @@ export function ContactSidebar({
       {/* Atividade recente (pedidos / projetos / OS) */}
       {customer && (
         <div className="px-4 py-3 border-b border-slate-100">
-          <div className="flex items-center gap-1.5 mb-2">
-            <ShoppingCart className="size-3.5 text-slate-400" />
-            <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
-              {segmentConfig.activity.label}
-            </span>
+          <div className="flex items-center justify-between gap-1.5 mb-2">
+            <div className="flex items-center gap-1.5">
+              <ShoppingCart className="size-3.5 text-slate-400" />
+              <span className="text-[11px] font-semibold text-slate-700 uppercase tracking-wider">
+                {segmentConfig.activity.label}
+              </span>
+            </div>
+            {isMoveis && (
+              <button
+                type="button"
+                onClick={() => setShowCreateProject(true)}
+                className="inline-flex items-center gap-1 h-6 px-2 text-[10px] font-semibold bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors"
+                title="Criar projeto a partir desta conversa"
+              >
+                <Plus className="size-3" /> Novo projeto
+              </button>
+            )}
           </div>
 
           {recentOrders.length === 0 ? (
@@ -890,6 +927,16 @@ export function ContactSidebar({
 
       {/* Notas */}
       <NotesCard contactId={contact.id} initialNotes={contact.notes} />
+
+      {/* Modal de criar projeto a partir da conversa — só Móveis */}
+      {showCreateProject && isMoveis && (
+        <ConvertToProjectModal
+          conversationId={conversation.id}
+          contactLabel={contact.push_name || contact.phone_number || "—"}
+          customer={customerForConversionModal()}
+          onClose={() => setShowCreateProject(false)}
+        />
+      )}
     </div>
   )
 }

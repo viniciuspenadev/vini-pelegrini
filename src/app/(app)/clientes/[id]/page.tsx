@@ -9,6 +9,7 @@ import {
   User, Phone, Mail, MapPin, Truck, Clock,
   FileText, ShoppingCart, TrendingUp, Package2,
   Plus, Receipt, Building2, CreditCard, Pencil,
+  FolderKanban,
 } from "lucide-react"
 import Link from "next/link"
 import { VendedorSwitch } from "@/components/vendedor-switch"
@@ -51,7 +52,7 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
   const session = await auth()
   const isAdminOrOwner = ["owner", "admin"].includes(session!.user.role)
 
-  const [{ data: customer }, { data: orders }, { data: vendedorHistory }, vendedores, { data: receivables }] = await Promise.all([
+  const [{ data: customer }, { data: orders }, { data: projects }, { data: projectStatuses }, { data: tenantRow }, { data: vendedorHistory }, vendedores, { data: receivables }] = await Promise.all([
     supabaseAdmin
       .from("customers")
       .select("*, vendedor:profiles!customers_vendedor_id_fkey ( id, full_name, email )")
@@ -64,6 +65,21 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
       .eq("customer_id", id)
       .eq("tenant_id", session!.user.tenantId)
       .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("projects")
+      .select("id, code, name, status_id, estimated_value, contracted_value, expected_install_date, install_cidade, install_estado, install_bairro, created_at")
+      .eq("customer_id", id)
+      .eq("tenant_id", session!.user.tenantId)
+      .order("created_at", { ascending: false }),
+    supabaseAdmin
+      .from("project_statuses")
+      .select("id, name, color")
+      .eq("tenant_id", session!.user.tenantId),
+    supabaseAdmin
+      .from("tenants")
+      .select("segment")
+      .eq("id", session!.user.tenantId)
+      .single(),
     supabaseAdmin
       .from("customer_vendedor_history")
       .select(`
@@ -232,6 +248,77 @@ export default async function ClienteDetailPage({ params }: { params: Promise<{ 
                 </div>
               )}
             </div>
+
+            {/* Projetos (só pra tenants de Móveis) */}
+            {tenantRow?.segment === "moveis" && (
+              <div className="bg-white rounded-xl border border-slate-200 shadow-card overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100">
+                  <div className="flex items-center gap-2.5">
+                    <FolderKanban className="size-4 text-slate-500" />
+                    <p className="text-sm font-semibold text-slate-900">Projetos</p>
+                    <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-bold text-blue-600 tabular-nums">
+                      {(projects ?? []).length}
+                    </span>
+                  </div>
+                  <LinkButton
+                    href={`/moveis/projetos/novo?customer=${id}`}
+                    className="h-7 px-2.5 text-xs gap-1 bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 rounded-lg"
+                  >
+                    <Plus className="size-3" /> Novo projeto
+                  </LinkButton>
+                </div>
+
+                {!projects || projects.length === 0 ? (
+                  <p className="text-sm text-slate-400 italic text-center py-10">
+                    Nenhum projeto registrado para este cliente.
+                  </p>
+                ) : (
+                  <div className="divide-y divide-slate-100">
+                    {(projects as any[]).map((p) => {
+                      const status = (projectStatuses ?? []).find((s) => s.id === p.status_id)
+                      const value  = Number(p.contracted_value ?? p.estimated_value ?? 0)
+                      return (
+                        <Link
+                          key={p.id}
+                          href={`/moveis/projetos/${p.id}`}
+                          className="group flex items-center gap-3 px-5 py-3 hover:bg-slate-50 transition-colors"
+                        >
+                          <span className="text-xs font-mono font-semibold text-slate-700 shrink-0 w-20">
+                            {p.code}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-slate-900 truncate group-hover:text-blue-600">{p.name}</p>
+                            {(p.install_cidade || p.install_bairro) && (
+                              <p className="text-[11px] text-slate-400 truncate">
+                                {[p.install_bairro, p.install_cidade && p.install_estado ? `${p.install_cidade}/${p.install_estado}` : p.install_cidade].filter(Boolean).join(" — ")}
+                              </p>
+                            )}
+                          </div>
+                          {status && (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0"
+                              style={{ backgroundColor: status.color + "20", color: status.color }}
+                            >
+                              <span className="size-1 rounded-full" style={{ backgroundColor: status.color }} />
+                              {status.name}
+                            </span>
+                          )}
+                          <div className="text-right shrink-0 w-24">
+                            <p className="text-sm font-semibold text-slate-900 tabular-nums">{BRL(value)}</p>
+                            {p.expected_install_date && (
+                              <p className="text-[10px] text-slate-400">
+                                inst. {DATE_SHORT(p.expected_install_date)}
+                              </p>
+                            )}
+                          </div>
+                          <ChevronRight className="size-3.5 text-slate-300 group-hover:text-blue-500 transition-colors" />
+                        </Link>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Timestamps */}
             <p className="text-xs text-slate-400 text-right px-1">

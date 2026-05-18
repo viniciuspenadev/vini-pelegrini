@@ -21,7 +21,7 @@ export const ALL_MODULES = [
   { key: "pescados.produtos",     label: "Produtos",               group: "Pescados",   segment: "pescados" },
   { key: "pescados.separacao",    label: "Separação Física",       group: "Pescados",   segment: "pescados" },
   { key: "pescados.rotas",        label: "Rotas de Entrega",       group: "Pescados",   segment: "pescados" },
-  { key: "moveis.projetos",       label: "Projetos",               group: "Móveis",     segment: "moveis", comingSoon: true },
+  { key: "moveis.projetos",       label: "Projetos",               group: "Móveis",     segment: "moveis" },
   { key: "moveis.produtos",       label: "Produtos",               group: "Móveis",     segment: "moveis", comingSoon: true },
   { key: "moveis.orcamentos",     label: "Orçamentos",             group: "Móveis",     segment: "moveis", comingSoon: true },
   { key: "moveis.instalacoes",    label: "Instalações",            group: "Móveis",     segment: "moveis", comingSoon: true },

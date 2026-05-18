@@ -11,6 +11,7 @@ import {
   TrendingUp, TrendingDown, LineChart,
   Settings, FileCheck, FileX, UserCog, CreditCard, ScrollText,
   MessageCircle, Inbox, Contact, Megaphone, Workflow, BarChart3,
+  FolderKanban,
 } from "lucide-react"
 import { getUnreadTotal } from "@/lib/actions/chat"
 import type { SegmentNavLabels } from "@/lib/segments/types"
@@ -39,7 +40,9 @@ interface NavGroup {
 const subIcon = "w-4 h-4 shrink-0"
 
 // Módulos por segmento — para gate de menus segmento-shaped
-const ORDERS_MODULES   = ["pescados.pedidos",  "moveis.projetos"]
+// `Pedidos` (pescados) e `Projetos` (móveis) são conceitos distintos com schemas
+// próprios — não compartilham rota nem componente, apenas o grupo "Vendas" na sidebar.
+const ORDERS_MODULES   = ["pescados.pedidos"]
 const PRODUCTS_MODULES = ["pescados.produtos", "moveis.produtos"]
 
 const NAV: NavGroup[] = [
@@ -54,11 +57,12 @@ const NAV: NavGroup[] = [
     key:   "vendas",
     label: "Vendas",
     icon:  <ShoppingCart className="w-5 h-5 shrink-0" strokeWidth={1.75} />,
-    modules: [...ORDERS_MODULES, "core.crm"],
+    modules: [...ORDERS_MODULES, "moveis.projetos", "core.crm"],
     children: [
-      { label: "Pedidos",    href: "/pedidos",    icon: <ClipboardList className={subIcon} strokeWidth={1.75} />, modules: ORDERS_MODULES },
-      { label: "Orçamentos", href: "/orcamentos", icon: <FileEdit      className={subIcon} strokeWidth={1.75} />, soon: true, modules: ORDERS_MODULES },
-      { label: "Clientes",   href: "/clientes",   icon: <Users         className={subIcon} strokeWidth={1.75} />, module:  "core.crm" },
+      { label: "Pedidos",    href: "/pedidos",          icon: <ClipboardList className={subIcon} strokeWidth={1.75} />, modules: ORDERS_MODULES },
+      { label: "Projetos",   href: "/moveis/projetos",  icon: <FolderKanban  className={subIcon} strokeWidth={1.75} />, module:  "moveis.projetos" },
+      { label: "Orçamentos", href: "/orcamentos",       icon: <FileEdit      className={subIcon} strokeWidth={1.75} />, soon: true, modules: [...ORDERS_MODULES, "moveis.projetos"] },
+      { label: "Clientes",   href: "/clientes",         icon: <Users         className={subIcon} strokeWidth={1.75} />, module:  "core.crm" },
     ],
   },
   {

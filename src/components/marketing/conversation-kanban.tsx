@@ -27,7 +27,20 @@ interface ChatContact {
   profile_pic_url: string | null
   source:          string | null
   lifecycle_stage: string | null
-  customers:       { id: string; razao_social: string; nome_fantasia: string | null } | null
+  customers: {
+    id:            string
+    razao_social:  string | null
+    nome_fantasia: string | null
+    cnpj_cpf?:     string | null
+    kind?:         "B2B" | "B2C" | null
+    cep?:          string | null
+    logradouro?:   string | null
+    numero?:       string | null
+    complemento?:  string | null
+    bairro?:       string | null
+    cidade?:       string | null
+    estado?:       string | null
+  } | null
 }
 
 interface Conversation {
@@ -131,7 +144,7 @@ export function ConversationKanban({ stages, conversations: initial, orderStats 
 
     startTransition(async () => {
       try {
-        await moveConversation(draggingId, stageId, newPos)
+        await moveConversation(c.id, stageId, newPos)
       } catch (err: any) {
         setConvs(initial)
         alert(err.message ?? "Erro ao mover")

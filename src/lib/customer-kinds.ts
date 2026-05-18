@@ -93,7 +93,6 @@ export interface KindSections {
   showFiscal:         boolean  // Inscrição Estadual + Regime tributário
   showLogistics:      boolean  // Rota de entrega, janela, instruções motorista
   showCommercial:     boolean  // Tabela preço, limite crédito, condições
-  showInstallSite:    boolean  // Endereço da obra (separado do residencial) — só B2C móveis típico
   showCoTitular:      boolean  // Cônjuge / 2º responsável
   showProfession:     boolean  // Profissão / faixa de renda
   showDesignerPartner: boolean // Designer/arquiteto que indicou
@@ -106,7 +105,6 @@ export function sectionsForKind(kind: CustomerKind): KindSections {
       showFiscal:          false,  // PF não tem IE/regime
       showLogistics:       false,  // sem rota de entrega tradicional
       showCommercial:      true,   // ainda relevante (condição de pagamento)
-      showInstallSite:     true,   // endereço da obra ≠ residencial é comum em móveis
       showCoTitular:       true,   // contrato com casal
       showProfession:      true,
       showDesignerPartner: true,
@@ -118,7 +116,6 @@ export function sectionsForKind(kind: CustomerKind): KindSections {
     showFiscal:          true,
     showLogistics:       true,
     showCommercial:      true,
-    showInstallSite:     false,
     showCoTitular:       false,
     showProfession:      false,
     showDesignerPartner: false,

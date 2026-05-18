@@ -16,6 +16,7 @@ interface ViaCEPResponse {
 
 interface CepInputProps {
   defaultValue?: string
+  name?:         string         // default "cep" — sobrescreva em forms que precisam de outro nome (ex: "install_cep")
   onAddressFill?: (address: {
     logradouro: string
     bairro:     string
@@ -25,7 +26,7 @@ interface CepInputProps {
   }) => void
 }
 
-export function CepInput({ defaultValue, onAddressFill }: CepInputProps) {
+export function CepInput({ defaultValue, name = "cep", onAddressFill }: CepInputProps) {
   const [value,   setValue]   = React.useState(defaultValue ? maskCEP(defaultValue) : "")
   const [status,  setStatus]  = React.useState<"idle" | "loading" | "error">("idle")
 
@@ -70,7 +71,7 @@ export function CepInput({ defaultValue, onAddressFill }: CepInputProps) {
   return (
     <InputField
       label="CEP"
-      name="cep"
+      name={name}
       value={value}
       onChange={handleChange}
       inputMode="numeric"

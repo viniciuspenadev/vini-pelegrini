@@ -384,8 +384,8 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false, kind
         </div>
       </Section>
 
-      {/* ── Origem do Lead + Endereço da Obra + Designer (B2C/móveis) ── */}
-      {(sections.showLeadOrigin || sections.showInstallSite || sections.showDesignerPartner) && (
+      {/* ── Origem do Lead + Designer (B2C/móveis) ── */}
+      {(sections.showLeadOrigin || sections.showDesignerPartner) && (
       <Section
         title="Origem & Captação"
         icon={<Heart />}
@@ -421,20 +421,6 @@ export function CustomerForm({ customer, vendedores, canEditStatus = false, kind
           </div>
         )}
 
-        {sections.showInstallSite && (
-          <div className="pt-2 border-t border-slate-100">
-            <Label className="text-slate-700 mb-2 block">
-              Endereço da obra <span className="text-slate-400 font-normal">(se diferente do residencial)</span>
-            </Label>
-            <textarea
-              name="meta_endereco_obra"
-              defaultValue={customerMeta.endereco_obra ?? ""}
-              rows={2}
-              className={`${inputBase} h-auto resize-none py-2`}
-              placeholder="Ex: Rua A, 123 - Bairro B - Cidade C / SP - obra em construção"
-            />
-          </div>
-        )}
       </Section>
       )}
 

@@ -7,12 +7,15 @@ import { redirect } from "next/navigation"
 
 /**
  * Constrói o objeto metadata a partir dos campos prefixados com "meta_" no FormData.
- * Aceita: meta_origem, meta_endereco_obra, meta_designer_parceiro, meta_profissao,
+ * Aceita: meta_origem, meta_designer_parceiro, meta_profissao,
  *         meta_co_titular_nome, meta_co_titular_cpf
+ *
+ * Endereço de obra NÃO vive aqui — vive em projects.install_address
+ * (1 cliente pode ter N projetos com endereços diferentes).
  */
 function buildMetadata(formData: FormData): Record<string, unknown> {
   const meta: Record<string, unknown> = {}
-  const keys = ["origem", "endereco_obra", "designer_parceiro", "profissao", "co_titular_nome", "co_titular_cpf"]
+  const keys = ["origem", "designer_parceiro", "profissao", "co_titular_nome", "co_titular_cpf"]
   for (const k of keys) {
     const v = formData.get(`meta_${k}`)
     if (typeof v === "string" && v.trim()) meta[k] = v.trim()

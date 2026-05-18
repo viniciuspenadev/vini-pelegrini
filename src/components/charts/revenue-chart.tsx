@@ -11,7 +11,9 @@ interface DataPoint {
 }
 
 interface Props {
-  data: DataPoint[]
+  data:    DataPoint[]
+  /** Altura do ResponsiveContainer. Passe "100%" quando o card pai for flex-col. */
+  height?: number | `${number}%`
 }
 
 const formatDay = (day: string) =>
@@ -35,9 +37,9 @@ function CustomTooltip({ active, payload, label }: any) {
   )
 }
 
-export function RevenueChart({ data }: Props) {
+export function RevenueChart({ data, height = 180 }: Props) {
   return (
-    <ResponsiveContainer width="100%" height={180}>
+    <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
         <defs>
           <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
