@@ -116,7 +116,18 @@ export function InboxClient({
       const msgs = await getMessages(convId)
       // Only update if still viewing the same conversation
       if (activeIdRef.current === convId) {
-        setActiveMessages(msgs)
+        setActiveMessages((prev) => {
+          // Mantém as URLs de mídia antigas para não interromper áudios/vídeos em reprodução
+          // (urls assinadas mudam a cada requisição e forçam o reload do elemento <audio>)
+          const prevMap = new Map(prev.map((m) => [m.id, m]))
+          return msgs.map((newMsg) => {
+            const oldMsg = prevMap.get(newMsg.id)
+            if (oldMsg?.media_url && newMsg.media_url) {
+              return { ...newMsg, media_url: oldMsg.media_url }
+            }
+            return newMsg
+          })
+        })
       }
     } catch (err) {
       console.error("Erro ao carregar mensagens:", err)
